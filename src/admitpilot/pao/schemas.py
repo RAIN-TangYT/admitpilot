@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import TypedDict
 
 from admitpilot.core.schemas import AgentResult, AgentTask, ApplicationContext
+from admitpilot.platform.runtime import WorkflowStatus
 
 
 @dataclass(slots=True)
@@ -22,6 +23,7 @@ class PaoGraphState(TypedDict):
 
     query: str
     context: ApplicationContext
+    workflow_status: WorkflowStatus
     route_plan: RoutePlan
     pending_tasks: list[AgentTask]
     current_task: AgentTask | None

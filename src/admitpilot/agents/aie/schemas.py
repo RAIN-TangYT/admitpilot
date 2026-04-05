@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from typing import Literal
 
 
 @dataclass(slots=True)
@@ -22,6 +23,9 @@ class OfficialAdmissionRecord:
     source_hash: str
     quality_score: float
     confidence: float
+    source_type: str = "official"
+    source_credibility: str = "official_primary"
+    version_id: str = ""
     is_policy_change: bool = False
     change_type: str = "updated"
     delta_summary: str = ""
@@ -45,6 +49,7 @@ class CaseRecord:
     cross_source_consistency: float
     freshness_score: float
     confidence: float
+    credibility_label: str = "medium"
 
 
 @dataclass(slots=True)
@@ -66,11 +71,12 @@ class OfficialCycleSnapshot:
     program: str
     cycle: str
     as_of_date: date
-    status: str
+    status: Literal["official_found", "predicted", "mixed"]
     confidence: float
     is_predicted: bool
     entries: list[OfficialAdmissionRecord] = field(default_factory=list)
     prediction_basis: list[str] = field(default_factory=list)
+    update_released: bool = False
     expires_at: datetime | None = None
 
 
@@ -82,6 +88,7 @@ class ForecastSignal:
     insight: str
     confidence: float
     basis: str
+    reason: str = ""
 
 
 @dataclass(slots=True)
@@ -93,4 +100,5 @@ class AdmissionsIntelligencePack:
     official_cycle_snapshots: list[OfficialCycleSnapshot] = field(default_factory=list)
     case_snapshot: CaseSnapshot | None = None
     forecast_signals: list[ForecastSignal] = field(default_factory=list)
+    official_status_by_school: dict[str, str] = field(default_factory=dict)
     cache_hit_count: int = 0
