@@ -16,9 +16,16 @@ def main() -> None:
             name="Demo Applicant",
             degree_level="Master",
             major_interest="Computer Science",
-            target_regions=["US", "UK"],
+            target_regions=["Singapore", "Hong Kong"],
+            target_schools=["NUS", "NTU", "HKU", "CUHK", "HKUST"],
+            target_programs=["MSCS"],
         ),
-        constraints={"timezone": "Asia/Shanghai", "cycle": "2026"},
+        constraints={
+            "timezone": "Asia/Shanghai",
+            "cycle": "2026",
+            "target_schools": ["NUS", "NTU", "HKU", "CUHK", "HKUST"],
+            "target_program": "MSCS",
+        },
     )
     response = orchestrator.invoke(request)
     print(response.summary)

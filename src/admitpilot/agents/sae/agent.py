@@ -6,7 +6,13 @@ from typing import cast
 
 from admitpilot.agents.base import BaseAgent
 from admitpilot.agents.sae.service import StrategicAdmissionsService
-from admitpilot.core.schemas import AIEAgentOutput, AgentResult, AgentTask, ApplicationContext, SAEAgentOutput
+from admitpilot.core.schemas import (
+    AgentResult,
+    AgentTask,
+    AIEAgentOutput,
+    ApplicationContext,
+    SAEAgentOutput,
+)
 
 
 class SAEAgent(BaseAgent):
@@ -20,30 +26,49 @@ class SAEAgent(BaseAgent):
 
     def run(self, task: AgentTask, context: ApplicationContext) -> AgentResult:
         """执行匹配评估并输出结构化摘要。"""
-        intelligence: AIEAgentOutput = context.shared_memory.get(
-            "aie",
-            {
-                "official_update_count": 0,
-                "official_memory_count": 0,
-                "case_memory_count": 0,
-                "forecast_count": 0,
-                "official_status": "unknown",
-                "as_of_date": "",
-                "cache_hit_count": 0,
-                "prediction_used": False,
-                "official_confidence": 0.0,
-                "case_confidence": 0.0,
-                "target_schools": [],
-                "target_program": "",
-            },
+        intelligence = cast(
+            AIEAgentOutput,
+            context.shared_memory.get(
+                "aie",
+                {
+                    "cycle": "",
+                    "as_of_date": "",
+                    "target_schools": [],
+                    "target_program": "",
+                    "official_status_by_school": {},
+                    "official_records": [],
+                    "case_records": [],
+                    "case_patterns": [],
+                    "forecast_signals": [],
+                    "evidence_levels": {},
+                    "official_confidence": 0.0,
+                    "case_confidence": 0.0,
+                    "cache_hit_count": 0,
+                    "prediction_used": False,
+                },
+            ),
         )
         report = self.service.evaluate(user_profile=context.profile, intelligence=intelligence)
         output: SAEAgentOutput = {
             "summary": report.summary,
+            "model_breakdown": report.model_breakdown,
             "strengths": report.strengths,
             "weaknesses": report.weaknesses,
-            "gap_count": len(report.gaps),
-            "tiers": [item.tier for item in report.recommendations],
+            "gap_actions": report.gap_actions,
+            "recommendations": [
+                {
+                    "school": item.school,
+                    "program": item.program,
+                    "tier": item.tier,
+                    "rule_score": item.rule_score,
+                    "semantic_score": item.semantic_score,
+                    "risk_score": item.risk_score,
+                    "overall_score": item.overall_score,
+                    "reasons": item.reasons,
+                }
+                for item in report.recommendations
+            ],
+            "ranking_order": report.ranking_order,
         }
         return AgentResult(
             agent=self.name,

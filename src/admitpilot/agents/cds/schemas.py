@@ -6,13 +6,35 @@ from dataclasses import dataclass, field
 
 
 @dataclass(slots=True)
-class DocumentBlueprint:
-    """单个文书蓝图。"""
+class NarrativeFactSlot:
+    """文书事实槽位。"""
+
+    slot_id: str
+    value: str
+    source: str
+    verified: bool = False
+
+
+@dataclass(slots=True)
+class DocumentDraft:
+    """文书草稿框架。"""
 
     document_type: str
-    narrative_focus: str
-    evidence_points: list[str] = field(default_factory=list)
+    target_school: str
+    version: str
+    content_outline: list[str] = field(default_factory=list)
+    fact_slots: list[NarrativeFactSlot] = field(default_factory=list)
     risks: list[str] = field(default_factory=list)
+    review_status: str = "draft"
+
+
+@dataclass(slots=True)
+class ConsistencyIssue:
+    """跨文档一致性问题。"""
+
+    severity: str
+    message: str
+    impacted_documents: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -27,5 +49,7 @@ class InterviewCue:
 class DocumentSupportPack:
     """CDS 结构化产物。"""
 
-    blueprints: list[DocumentBlueprint] = field(default_factory=list)
+    drafts: list[DocumentDraft] = field(default_factory=list)
     interview_cues: list[InterviewCue] = field(default_factory=list)
+    consistency_issues: list[ConsistencyIssue] = field(default_factory=list)
+    review_checklist: list[str] = field(default_factory=list)
