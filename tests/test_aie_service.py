@@ -25,3 +25,15 @@ def test_aie_service_mixes_official_and_prediction() -> None:
     assert statuses["HKUST"] == "official_found"
     assert pack.case_snapshot is not None
     assert pack.case_snapshot.sample_size > 0
+
+
+def test_aie_service_enforces_supported_school_scope() -> None:
+    service = AdmissionsIntelligenceService()
+    pack = service.retrieve(
+        query="范围约束测试",
+        cycle="2026",
+        schools=["mit", "stanford"],
+        as_of_date=date.today(),
+    )
+    scoped = sorted(item.school for item in pack.official_cycle_snapshots)
+    assert scoped == sorted(list(service.OFFICIAL_SCHOOLS))
