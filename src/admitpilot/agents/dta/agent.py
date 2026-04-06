@@ -6,7 +6,14 @@ from typing import cast
 
 from admitpilot.agents.base import BaseAgent
 from admitpilot.agents.dta.service import DynamicTimelineService
-from admitpilot.core.schemas import AgentResult, AgentTask, ApplicationContext, DTAAgentOutput, SAEAgentOutput
+from admitpilot.core.schemas import (
+    AIEAgentOutput,
+    AgentResult,
+    AgentTask,
+    ApplicationContext,
+    DTAAgentOutput,
+    SAEAgentOutput,
+)
 
 
 class DTAAgent(BaseAgent):
@@ -20,23 +27,78 @@ class DTAAgent(BaseAgent):
 
     def run(self, task: AgentTask, context: ApplicationContext) -> AgentResult:
         """执行时间规划并输出关键统计。"""
-        sae_data: SAEAgentOutput = context.shared_memory.get(
+        sae_data = cast(
+            SAEAgentOutput,
+            context.shared_memory.get(
             "sae",
             {
                 "summary": "",
+                "model_breakdown": {},
                 "strengths": [],
                 "weaknesses": [],
-                "gap_count": 0,
-                "tiers": [],
+                "gap_actions": [],
+                "recommendations": [],
+                "ranking_order": [],
             },
+            ),
         )
-        priorities = sae_data.get("tiers", [])
-        plan = self.service.build_plan(priorities=priorities, constraints=context.constraints)
+        aie_data = cast(
+            AIEAgentOutput,
+            context.shared_memory.get(
+                "aie",
+                {
+                    "cycle": "",
+                    "as_of_date": "",
+                    "target_schools": [],
+                    "target_program": "",
+                    "official_status_by_school": {},
+                    "official_records": [],
+                    "case_records": [],
+                    "case_patterns": [],
+                    "forecast_signals": [],
+                    "evidence_levels": {},
+                    "official_confidence": 0.0,
+                    "case_confidence": 0.0,
+                    "cache_hit_count": 0,
+                    "prediction_used": False,
+                },
+            ),
+        )
+        plan = self.service.build_plan(
+            strategy=sae_data, intelligence=aie_data, constraints=context.constraints
+        )
         output: DTAAgentOutput = {
-            "title": plan.title,
-            "milestone_count": len(plan.milestones),
-            "week_count": len(plan.weeks),
-            "risk_weeks": [item.week for item in plan.weeks if item.risks],
+            "board_title": plan.title,
+            "milestones": [
+                {
+                    "key": item.key,
+                    "title": item.title,
+                    "due_week": item.due_week,
+                    "status": item.status,
+                    "depends_on": item.depends_on,
+                }
+                for item in plan.milestones
+            ],
+            "weekly_plan": [
+                {
+                    "week": item.week,
+                    "focus": item.focus,
+                    "items": item.items,
+                    "risks": item.risks,
+                    "school_scope": item.school_scope,
+                }
+                for item in plan.weeks
+            ],
+            "risk_markers": [
+                {
+                    "week": item.week,
+                    "level": item.level,
+                    "message": item.message,
+                    "mitigation": item.mitigation,
+                }
+                for item in plan.risk_markers
+            ],
+            "document_instructions": plan.document_instructions,
         }
         return AgentResult(
             agent=self.name,

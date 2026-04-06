@@ -27,25 +27,68 @@ class CDSAgent(BaseAgent):
 
     def run(self, task: AgentTask, context: ApplicationContext) -> AgentResult:
         """执行文书支持任务并输出结果摘要。"""
-        strategy: SAEAgentOutput = context.shared_memory.get(
+        strategy = cast(
+            SAEAgentOutput,
+            context.shared_memory.get(
             "sae",
             {
                 "summary": "",
+                "model_breakdown": {},
                 "strengths": [],
                 "weaknesses": [],
-                "gap_count": 0,
-                "tiers": [],
+                "gap_actions": [],
+                "recommendations": [],
+                "ranking_order": [],
             },
+            ),
         )
-        timeline: DTAAgentOutput = context.shared_memory.get(
+        timeline = cast(
+            DTAAgentOutput,
+            context.shared_memory.get(
             "dta",
-            {"title": "", "milestone_count": 0, "week_count": 0, "risk_weeks": []},
+            {
+                "board_title": "",
+                "milestones": [],
+                "weekly_plan": [],
+                "risk_markers": [],
+                "document_instructions": [],
+            },
+            ),
         )
         pack = self.service.build_support_pack(strategy=strategy, timeline=timeline)
         output: CDSAgentOutput = {
-            "blueprint_count": len(pack.blueprints),
-            "interview_cue_count": len(pack.interview_cues),
-            "document_types": [item.document_type for item in pack.blueprints],
+            "document_drafts": [
+                {
+                    "document_type": item.document_type,
+                    "target_school": item.target_school,
+                    "version": item.version,
+                    "content_outline": item.content_outline,
+                    "fact_slots": [
+                        {
+                            "slot_id": slot.slot_id,
+                            "value": slot.value,
+                            "source": slot.source,
+                            "verified": slot.verified,
+                        }
+                        for slot in item.fact_slots
+                    ],
+                    "risks": item.risks,
+                    "review_status": item.review_status,
+                }
+                for item in pack.drafts
+            ],
+            "interview_talking_points": [
+                f"{item.question} -> {item.cue}" for item in pack.interview_cues
+            ],
+            "consistency_issues": [
+                {
+                    "severity": item.severity,
+                    "message": item.message,
+                    "impacted_documents": item.impacted_documents,
+                }
+                for item in pack.consistency_issues
+            ],
+            "review_checklist": pack.review_checklist,
         }
         return AgentResult(
             agent=self.name,

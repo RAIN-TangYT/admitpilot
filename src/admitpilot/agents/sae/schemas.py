@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass(slots=True)
@@ -12,8 +13,11 @@ class ProgramRecommendation:
     school: str
     program: str
     tier: str
+    rule_score: float
+    semantic_score: float
     risk_score: float
-    reason: str
+    overall_score: float
+    reasons: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -21,7 +25,9 @@ class StrategicReport:
     """SAE 结构化评估报告。"""
 
     summary: str
+    model_breakdown: dict[str, float] = field(default_factory=dict)
     strengths: list[str] = field(default_factory=list)
     weaknesses: list[str] = field(default_factory=list)
-    gaps: list[str] = field(default_factory=list)
+    gap_actions: list[str] = field(default_factory=list)
     recommendations: list[ProgramRecommendation] = field(default_factory=list)
+    ranking_order: list[str] = field(default_factory=list)

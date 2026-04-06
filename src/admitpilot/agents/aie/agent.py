@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict, is_dataclass
 from datetime import date
-from typing import cast
+from typing import Any, cast
 
 from admitpilot.agents.aie.service import AdmissionsIntelligenceService
 from admitpilot.agents.base import BaseAgent
@@ -31,32 +32,44 @@ class AIEAgent(BaseAgent):
             program=target_program,
             as_of_date=date.today(),
         )
-        official_status = "official_found"
-        if any(item.is_predicted for item in pack.official_cycle_snapshots):
-            official_status = "mixed"
-        if all(item.is_predicted for item in pack.official_cycle_snapshots):
-            official_status = "predicted"
         avg_official_confidence = (
-            sum(item.confidence for item in pack.official_cycle_snapshots) / len(pack.official_cycle_snapshots)
+            sum(item.confidence for item in pack.official_cycle_snapshots)
+            / len(pack.official_cycle_snapshots)
             if pack.official_cycle_snapshots
             else 0.0
         )
         case_confidence = 0.0
         if pack.case_long_memory:
             case_confidence = sum(item.confidence for item in pack.case_long_memory) / len(pack.case_long_memory)
+        prediction_used = any(item.is_predicted for item in pack.official_cycle_snapshots)
         output: AIEAgentOutput = {
-            "official_update_count": sum(len(item.entries) for item in pack.official_cycle_snapshots),
-            "official_memory_count": len(pack.official_long_memory),
-            "case_memory_count": len(pack.case_long_memory),
-            "forecast_count": len(pack.forecast_signals),
-            "official_status": official_status,
+            "cycle": cycle,
             "as_of_date": date.today().isoformat(),
-            "cache_hit_count": pack.cache_hit_count,
-            "prediction_used": official_status != "official_found",
-            "official_confidence": avg_official_confidence,
-            "case_confidence": case_confidence,
             "target_schools": target_schools,
             "target_program": target_program,
+            "official_status_by_school": dict(pack.official_status_by_school),
+            "official_records": [
+                self._official_record_to_dict(item)
+                for snapshot in pack.official_cycle_snapshots
+                for item in snapshot.entries
+            ],
+            "case_records": [self._case_record_to_dict(item) for item in pack.case_long_memory],
+            "case_patterns": list(pack.case_snapshot.patterns if pack.case_snapshot else []),
+            "forecast_signals": [
+                {
+                    "school": signal.school,
+                    "insight": signal.insight,
+                    "confidence": signal.confidence,
+                    "basis": signal.basis,
+                    "reason": signal.reason,
+                }
+                for signal in pack.forecast_signals
+            ],
+            "evidence_levels": self._build_evidence_levels(pack.official_status_by_school),
+            "official_confidence": avg_official_confidence,
+            "case_confidence": case_confidence,
+            "cache_hit_count": pack.cache_hit_count,
+            "prediction_used": prediction_used,
         }
         return AgentResult(
             agent=self.name,
@@ -72,6 +85,8 @@ class AIEAgent(BaseAgent):
         schools = payload_schools if isinstance(payload_schools, list) and payload_schools else constraint_schools
         if isinstance(schools, list) and schools:
             return [str(item).upper() for item in schools]
+        if context.profile.target_schools:
+            return [item.upper() for item in context.profile.target_schools]
         return list(self.service.OFFICIAL_SCHOOLS)
 
     def _resolve_target_program(self, task: AgentTask, context: ApplicationContext) -> str:
@@ -81,6 +96,45 @@ class AIEAgent(BaseAgent):
         constraint_program = context.constraints.get("target_program")
         if isinstance(constraint_program, str) and constraint_program:
             return constraint_program
+        if context.profile.target_programs:
+            return context.profile.target_programs[0]
         if context.profile.major_interest:
             return context.profile.major_interest
         return "MSCS"
+
+    def _build_evidence_levels(self, status_by_school: dict[str, str]) -> dict[str, str]:
+        levels: dict[str, str] = {}
+        for school, status in status_by_school.items():
+            levels[school] = (
+                "official_primary" if status == "official_found" else "forecast_with_history"
+            )
+        return levels
+
+    def _official_record_to_dict(self, item: object) -> dict[str, str | float | bool]:
+        record = self._to_dict(item)
+        return {
+            "school": str(record.get("school", "")),
+            "program": str(record.get("program", "")),
+            "cycle": str(record.get("cycle", "")),
+            "page_type": str(record.get("page_type", "")),
+            "source_url": str(record.get("source_url", "")),
+            "version_id": str(record.get("version_id", "")),
+            "confidence": float(record.get("confidence", 0.0)),
+            "is_policy_change": bool(record.get("is_policy_change", False)),
+        }
+
+    def _case_record_to_dict(self, item: object) -> dict[str, str | float]:
+        record = self._to_dict(item)
+        return {
+            "school": str(record.get("school", "")),
+            "program": str(record.get("program", "")),
+            "cycle": str(record.get("cycle", "")),
+            "source_type": str(record.get("source_type", "")),
+            "credibility_label": str(record.get("credibility_label", "")),
+            "confidence": float(record.get("confidence", 0.0)),
+        }
+
+    def _to_dict(self, item: object) -> dict[str, Any]:
+        if is_dataclass(item) and not isinstance(item, type):
+            return asdict(item)
+        return {}
