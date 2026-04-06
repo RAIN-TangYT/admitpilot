@@ -6,6 +6,7 @@ import math
 from datetime import date, datetime, timedelta
 from statistics import mean
 
+from admitpilot.agents.aie.prompts import SYSTEM_PROMPT
 from admitpilot.agents.aie.gateways import (
     CaseSourceGateway,
     OfficialSourceGateway,
@@ -26,6 +27,7 @@ from admitpilot.agents.aie.schemas import (
     OfficialAdmissionRecord,
     OfficialCycleSnapshot,
 )
+from admitpilot.platform.llm.qwen import QwenClient
 
 
 class AdmissionsIntelligenceService:
@@ -39,11 +41,13 @@ class AdmissionsIntelligenceService:
         case_gateway: CaseSourceGateway | None = None,
         official_repository: OfficialSnapshotRepository | None = None,
         case_repository: CaseSnapshotRepository | None = None,
+        llm_client: QwenClient | None = None,
     ) -> None:
         self.official_gateway = official_gateway or StubOfficialSourceGateway()
         self.case_gateway = case_gateway or StubCaseSourceGateway()
         self.official_repository = official_repository or InMemoryOfficialSnapshotRepository()
         self.case_repository = case_repository or InMemoryCaseSnapshotRepository()
+        self.llm_client = llm_client or QwenClient()
         self._official_long_memory = self._build_official_long_memory()
         self._case_long_memory: list[CaseRecord] = []
 
@@ -92,6 +96,17 @@ class AdmissionsIntelligenceService:
         if case_cache_hit:
             cache_hit_count += 1
         case_records = self._case_gateway_records_by_scope(target_schools, normalized_program)
+        case_patterns = list(case_snapshot.patterns if case_snapshot else [])
+        forecast_signals = self._llm_refine_intelligence(
+            query=query,
+            cycle=cycle,
+            program=normalized_program,
+            case_patterns=case_patterns,
+            forecast_signals=forecast_signals,
+            official_snapshots=official_snapshots,
+        )
+        if case_snapshot is not None:
+            case_snapshot.patterns = case_patterns
         status_by_school = {item.school: str(item.status) for item in official_snapshots}
         return AdmissionsIntelligencePack(
             official_long_memory=[
@@ -106,6 +121,65 @@ class AdmissionsIntelligenceService:
             official_status_by_school=status_by_school,
             cache_hit_count=cache_hit_count,
         )
+
+    def _llm_refine_intelligence(
+        self,
+        query: str,
+        cycle: str,
+        program: str,
+        case_patterns: list[str],
+        forecast_signals: list[ForecastSignal],
+        official_snapshots: list[OfficialCycleSnapshot],
+    ) -> list[ForecastSignal]:
+        if not self.llm_client.enabled:
+            return forecast_signals
+        prompt = "\n".join(
+            [
+                "请基于以下招生情报生成 JSON。",
+                '返回格式：{"case_patterns":["..."],"forecast_signals":[{"school":"NUS","insight":"...","basis":"...","reason":"..."}]}',
+                "不要输出 markdown。",
+                f"query={query}",
+                f"cycle={cycle}",
+                f"program={program}",
+                f"official_status={[{'school': item.school, 'status': item.status, 'confidence': round(item.confidence, 2)} for item in official_snapshots]}",
+                f"case_patterns_seed={case_patterns}",
+                f"forecast_seed={[{'school': item.school, 'insight': item.insight, 'confidence': round(item.confidence, 2), 'basis': item.basis, 'reason': item.reason} for item in forecast_signals]}",
+            ]
+        )
+        try:
+            payload = self.llm_client.chat_json(
+                system_prompt=SYSTEM_PROMPT,
+                user_prompt=prompt,
+                temperature=0,
+            )
+        except RuntimeError:
+            return forecast_signals
+        llm_patterns = payload.get("case_patterns", [])
+        if isinstance(llm_patterns, list):
+            normalized_patterns = [str(item).strip() for item in llm_patterns if str(item).strip()]
+            if normalized_patterns:
+                case_patterns[:] = normalized_patterns[:4]
+        llm_signals = payload.get("forecast_signals", [])
+        if not isinstance(llm_signals, list):
+            return forecast_signals
+        signal_by_school = {item.school: item for item in forecast_signals}
+        for item in llm_signals:
+            if not isinstance(item, dict):
+                continue
+            school = str(item.get("school", "")).upper()
+            if school not in signal_by_school:
+                continue
+            signal = signal_by_school[school]
+            insight = str(item.get("insight", "")).strip()
+            basis = str(item.get("basis", "")).strip()
+            reason = str(item.get("reason", "")).strip()
+            if insight:
+                signal.insight = insight
+            if basis:
+                signal.basis = basis
+            if reason:
+                signal.reason = reason
+        return forecast_signals
 
     def _resolve_official_snapshot(
         self, school: str, program: str, cycle: str, query: str, as_of_date: date

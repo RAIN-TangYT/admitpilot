@@ -2,16 +2,23 @@
 
 from __future__ import annotations
 
+import json
+
 from typing import Any
 
+from admitpilot.agents.dta.prompts import SYSTEM_PROMPT
 from admitpilot.agents.dta.schemas import Milestone, RiskMarker, TimelinePlan, WeekTask
 from admitpilot.core.schemas import AIEAgentOutput, SAEAgentOutput
+from admitpilot.platform.llm.qwen import QwenClient
 
 
 class DynamicTimelineService:
     """负责将策略结果转化为可执行周计划。"""
 
     DEFAULT_WEEKS = 8
+
+    def __init__(self, llm_client: QwenClient | None = None) -> None:
+        self.llm_client = llm_client or QwenClient()
 
     def build_plan(
         self,
@@ -43,6 +50,15 @@ class DynamicTimelineService:
         )
         document_instructions = self._build_document_instructions(
             milestones=milestones, schools=schools
+        )
+        milestones, weeks, risk_markers, document_instructions = self._llm_refine_plan(
+            strategy=strategy,
+            intelligence=intelligence,
+            constraints=constraints,
+            milestones=milestones,
+            weeks=weeks,
+            risk_markers=risk_markers,
+            document_instructions=document_instructions,
         )
         return TimelinePlan(
             title=f"{cycle}申请季执行板 ({timezone})",
@@ -174,3 +190,100 @@ class DynamicTimelineService:
     def _resolve_total_weeks(self, constraints: dict[str, Any]) -> int:
         weeks = int(constraints.get("timeline_weeks", self.DEFAULT_WEEKS))
         return min(max(weeks, 4), 16)
+
+    def _llm_refine_plan(
+        self,
+        strategy: SAEAgentOutput,
+        intelligence: AIEAgentOutput,
+        constraints: dict[str, Any],
+        milestones: list[Milestone],
+        weeks: list[WeekTask],
+        risk_markers: list[RiskMarker],
+        document_instructions: list[str],
+    ) -> tuple[list[Milestone], list[WeekTask], list[RiskMarker], list[str]]:
+        if not self.llm_client.enabled:
+            return milestones, weeks, risk_markers, document_instructions
+        payload = {
+            "constraints": constraints,
+            "ranking_order": strategy.get("ranking_order", []),
+            "official_status_by_school": intelligence.get("official_status_by_school", {}),
+            "milestones": [
+                {"key": item.key, "title": item.title, "due_week": item.due_week}
+                for item in milestones
+            ],
+            "weeks": [{"week": item.week, "focus": item.focus, "items": item.items} for item in weeks],
+            "risk_markers": [
+                {"week": item.week, "level": item.level, "message": item.message}
+                for item in risk_markers
+            ],
+            "document_instructions": document_instructions,
+        }
+        prompt = "\n".join(
+            [
+                "请基于输入输出 JSON。",
+                (
+                    '返回格式：{"milestone_titles":{"scope_lock":"..."},"weekly_focus":{"1":"..."},'
+                    '"week_items":{"1":["..."]},"risk_markers":[{"week":2,"level":"yellow","message":"...","mitigation":"..."}],'
+                    '"document_instructions":["..."]}'
+                ),
+                "不要输出 markdown。",
+                json.dumps(payload, ensure_ascii=False, default=str),
+            ]
+        )
+        try:
+            result = self.llm_client.chat_json(
+                system_prompt=SYSTEM_PROMPT,
+                user_prompt=prompt,
+                temperature=0,
+            )
+        except RuntimeError:
+            return milestones, weeks, risk_markers, document_instructions
+        milestone_titles = result.get("milestone_titles", {})
+        if isinstance(milestone_titles, dict):
+            for item in milestones:
+                title = str(milestone_titles.get(item.key, "")).strip()
+                if title:
+                    item.title = title
+        weekly_focus = result.get("weekly_focus", {})
+        week_items = result.get("week_items", {})
+        for item in weeks:
+            if isinstance(weekly_focus, dict):
+                focus = str(weekly_focus.get(str(item.week), "")).strip()
+                if focus:
+                    item.focus = focus
+            if isinstance(week_items, dict):
+                items = week_items.get(str(item.week))
+                if isinstance(items, list):
+                    normalized = [text for raw in items if (text := str(raw).strip())]
+                    if normalized:
+                        item.items = normalized
+        llm_risks = result.get("risk_markers", [])
+        if isinstance(llm_risks, list):
+            normalized_risks: list[RiskMarker] = []
+            for raw in llm_risks:
+                if not isinstance(raw, dict):
+                    continue
+                try:
+                    week = int(raw.get("week", 0))
+                except (TypeError, ValueError):
+                    continue
+                message = str(raw.get("message", "")).strip()
+                mitigation = str(raw.get("mitigation", "")).strip()
+                level = str(raw.get("level", "yellow")).strip() or "yellow"
+                if week > 0 and message and mitigation:
+                    normalized_risks.append(
+                        RiskMarker(
+                            week=week,
+                            level=level,
+                            message=message,
+                            mitigation=mitigation,
+                        )
+                    )
+            if normalized_risks:
+                risk_markers = normalized_risks
+        llm_instructions = result.get("document_instructions")
+        if isinstance(llm_instructions, list):
+            normalized_instructions = [text for raw in llm_instructions if (text := str(raw).strip())]
+            if normalized_instructions:
+                document_instructions = normalized_instructions
+        return milestones, weeks, risk_markers, document_instructions

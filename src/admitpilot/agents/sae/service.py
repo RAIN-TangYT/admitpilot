@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import json
+
+from admitpilot.agents.sae.prompts import SYSTEM_PROMPT
 from admitpilot.agents.sae.schemas import ProgramRecommendation, StrategicReport
 from admitpilot.core.schemas import AIEAgentOutput, UserProfile
+from admitpilot.platform.llm.qwen import QwenClient
 
 
 class StrategicAdmissionsService:
@@ -11,6 +15,9 @@ class StrategicAdmissionsService:
 
     SUPPORTED_SCHOOLS = ("NUS", "NTU", "HKU", "CUHK", "HKUST")
     MODEL_BREAKDOWN = {"rule": 0.45, "semantic": 0.35, "risk": 0.20}
+
+    def __init__(self, llm_client: QwenClient | None = None) -> None:
+        self.llm_client = llm_client or QwenClient()
 
     def evaluate(self, user_profile: UserProfile, intelligence: AIEAgentOutput) -> StrategicReport:
         """输出分层推荐、优劣势和差距分析。"""
@@ -40,6 +47,15 @@ class StrategicAdmissionsService:
         summary = (
             f"完成 {len(recommendations)} 个项目评估，"
             f"官方未完全发布学校数={predicted_count}，输出风险感知排序。"
+        )
+        summary, strengths, weaknesses, gap_actions, recommendations = self._llm_refine_report(
+            user_profile=user_profile,
+            intelligence=intelligence,
+            summary=summary,
+            strengths=strengths,
+            weaknesses=weaknesses,
+            gap_actions=gap_actions,
+            recommendations=recommendations,
         )
         return StrategicReport(
             summary=summary,
@@ -181,3 +197,86 @@ class StrategicAdmissionsService:
         if any(item.tier == "reach" for item in recommendations):
             actions.append("为冲刺项目准备替代叙事版本与推荐顺序预案")
         return actions
+
+    def _llm_refine_report(
+        self,
+        user_profile: UserProfile,
+        intelligence: AIEAgentOutput,
+        summary: str,
+        strengths: list[str],
+        weaknesses: list[str],
+        gap_actions: list[str],
+        recommendations: list[ProgramRecommendation],
+    ) -> tuple[str, list[str], list[str], list[str], list[ProgramRecommendation]]:
+        if not self.llm_client.enabled:
+            return summary, strengths, weaknesses, gap_actions, recommendations
+        payload = {
+            "profile": {
+                "major_interest": user_profile.major_interest,
+                "target_schools": user_profile.target_schools,
+                "target_programs": user_profile.target_programs,
+                "academic_metrics": user_profile.academic_metrics,
+                "language_scores": user_profile.language_scores,
+                "experiences": user_profile.experiences,
+                "risk_preference": user_profile.risk_preference,
+            },
+            "intelligence": {
+                "target_program": intelligence.get("target_program", ""),
+                "official_status_by_school": intelligence.get("official_status_by_school", {}),
+                "forecast_signals": intelligence.get("forecast_signals", []),
+            },
+            "recommendations": [
+                {
+                    "school": item.school,
+                    "program": item.program,
+                    "tier": item.tier,
+                    "rule_score": round(item.rule_score, 3),
+                    "semantic_score": round(item.semantic_score, 3),
+                    "risk_score": round(item.risk_score, 3),
+                    "overall_score": round(item.overall_score, 3),
+                    "reasons": item.reasons,
+                }
+                for item in recommendations
+            ],
+        }
+        prompt = "\n".join(
+            [
+                "请基于输入生成 JSON。",
+                (
+                    '返回格式：{"summary":"...","strengths":["..."],"weaknesses":["..."],'
+                    '"gap_actions":["..."],"reasons_by_school":{"NUS":["..."]}}'
+                ),
+                "不要输出 markdown。",
+                json.dumps(payload, ensure_ascii=False, default=str),
+            ]
+        )
+        try:
+            result = self.llm_client.chat_json(
+                system_prompt=SYSTEM_PROMPT,
+                user_prompt=prompt,
+                temperature=0,
+            )
+        except RuntimeError:
+            return summary, strengths, weaknesses, gap_actions, recommendations
+        refined_summary = str(result.get("summary", "")).strip() or summary
+        refined_strengths = self._normalize_text_list(result.get("strengths")) or strengths
+        refined_weaknesses = self._normalize_text_list(result.get("weaknesses")) or weaknesses
+        refined_gap_actions = self._normalize_text_list(result.get("gap_actions")) or gap_actions
+        reasons_by_school = result.get("reasons_by_school", {})
+        if isinstance(reasons_by_school, dict):
+            for item in recommendations:
+                reasons = self._normalize_text_list(reasons_by_school.get(item.school))
+                if reasons:
+                    item.reasons = reasons
+        return (
+            refined_summary,
+            refined_strengths,
+            refined_weaknesses,
+            refined_gap_actions,
+            recommendations,
+        )
+
+    def _normalize_text_list(self, value: object) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return [text for item in value if (text := str(item).strip())]
