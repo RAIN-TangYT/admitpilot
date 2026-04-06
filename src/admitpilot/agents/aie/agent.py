@@ -22,6 +22,18 @@ class AIEAgent(BaseAgent):
 
     def run(self, task: AgentTask, context: ApplicationContext) -> AgentResult:
         """执行招生情报任务并输出标准结果。"""
+        if task.name == "llm_smoke_test":
+            from admitpilot.platform.llm.qwen import qwen_chat
+
+            prompt = str(task.payload.get("prompt") or context.user_query or "ping")
+            resp = qwen_chat(prompt=prompt)
+            return AgentResult(
+                agent=self.name,
+                task=task.name,
+                success=True,
+                output={"provider": "qwen", "prompt": prompt, "content": resp.content},
+                confidence=1.0,
+            )
         cycle = str(context.constraints.get("cycle", "2026"))
         target_schools = self._resolve_target_schools(task=task, context=context)
         target_program = self._resolve_target_program(task=task, context=context)

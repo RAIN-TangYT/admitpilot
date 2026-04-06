@@ -33,6 +33,7 @@ from admitpilot.core.schemas import (
 from admitpilot.pao.contracts import OrchestrationRequest, OrchestrationResponse
 from admitpilot.pao.router import IntentRouter
 from admitpilot.pao.schemas import PaoGraphState, RoutePlan
+from admitpilot.platform.llm.qwen import QwenClient
 from admitpilot.platform import PlatformCommonBundle, build_default_platform_common_bundle
 from admitpilot.platform.runtime import RuntimeStateMachine, TaskStatus, WorkflowStatus
 
@@ -58,11 +59,12 @@ class PrincipalApplicationOrchestrator:
 
     def _build_default_agents(self) -> dict[str, BaseAgent]:
         """构建系统默认代理实例。"""
+        llm_client = QwenClient()
         return {
-            "aie": AIEAgent(service=AdmissionsIntelligenceService()),
-            "sae": SAEAgent(service=StrategicAdmissionsService()),
-            "dta": DTAAgent(service=DynamicTimelineService()),
-            "cds": CDSAgent(service=CoreDocumentService()),
+            "aie": AIEAgent(service=AdmissionsIntelligenceService(llm_client=llm_client)),
+            "sae": SAEAgent(service=StrategicAdmissionsService(llm_client=llm_client)),
+            "dta": DTAAgent(service=DynamicTimelineService(llm_client=llm_client)),
+            "cds": CDSAgent(service=CoreDocumentService(llm_client=llm_client)),
         }
 
     def _build_graph(self) -> Any:
