@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
+
+from admitpilot.platform.runtime import contracts as runtime_contracts
+
+AgentTask = runtime_contracts.AgentTask
+AgentResult = runtime_contracts.AgentResult
 
 
 @dataclass(slots=True)
@@ -17,72 +22,59 @@ class UserProfile:
     academic_metrics: dict[str, Any] = field(default_factory=dict)
     language_scores: dict[str, Any] = field(default_factory=dict)
     experiences: list[str] = field(default_factory=list)
-
-
-@dataclass(slots=True)
-class AgentTask:
-    """单个代理任务定义。"""
-
-    name: str
-    description: str
-    agent: str
-    payload: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass(slots=True)
-class AgentResult:
-    """单个代理执行结果。"""
-
-    agent: str
-    task: str
-    success: bool
-    output: dict[str, Any] = field(default_factory=dict)
-    confidence: float = 0.0
-    trace: list[str] = field(default_factory=list)
+    target_schools: list[str] = field(default_factory=list)
+    target_programs: list[str] = field(default_factory=list)
+    risk_preference: str = "balanced"
 
 
 class AIEAgentOutput(TypedDict):
     """AIE 代理输出契约。"""
 
-    official_update_count: int
-    official_memory_count: int
-    case_memory_count: int
-    forecast_count: int
-    official_status: str
+    cycle: str
     as_of_date: str
-    cache_hit_count: int
-    prediction_used: bool
-    official_confidence: float
-    case_confidence: float
     target_schools: list[str]
     target_program: str
+    official_status_by_school: dict[str, str]
+    official_records: list[dict[str, Any]]
+    case_records: list[dict[str, Any]]
+    case_patterns: list[str]
+    forecast_signals: list[dict[str, Any]]
+    evidence_levels: dict[str, str]
+    official_confidence: float
+    case_confidence: float
+    cache_hit_count: int
+    prediction_used: bool
 
 
 class SAEAgentOutput(TypedDict):
     """SAE 代理输出契约。"""
 
     summary: str
+    model_breakdown: dict[str, float]
     strengths: list[str]
     weaknesses: list[str]
-    gap_count: int
-    tiers: list[str]
+    gap_actions: list[str]
+    recommendations: list[dict[str, Any]]
+    ranking_order: list[str]
 
 
 class DTAAgentOutput(TypedDict):
     """DTA 代理输出契约。"""
 
-    title: str
-    milestone_count: int
-    week_count: int
-    risk_weeks: list[int]
+    board_title: str
+    milestones: list[dict[str, Any]]
+    weekly_plan: list[dict[str, Any]]
+    risk_markers: list[dict[str, Any]]
+    document_instructions: list[str]
 
 
 class CDSAgentOutput(TypedDict):
     """CDS 代理输出契约。"""
 
-    blueprint_count: int
-    interview_cue_count: int
-    document_types: list[str]
+    document_drafts: list[dict[str, Any]]
+    interview_talking_points: list[str]
+    consistency_issues: list[dict[str, Any]]
+    review_checklist: list[str]
 
 
 class SharedMemory(TypedDict, total=False):
@@ -101,4 +93,5 @@ class ApplicationContext:
     user_query: str
     profile: UserProfile = field(default_factory=UserProfile)
     constraints: dict[str, Any] = field(default_factory=dict)
-    shared_memory: SharedMemory = field(default_factory=dict)
+    shared_memory: SharedMemory = field(default_factory=lambda: cast(SharedMemory, {}))
+    decisions: dict[str, Any] = field(default_factory=dict)

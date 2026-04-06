@@ -33,13 +33,44 @@ class IntentRouter:
         if not selected:
             selected = {"intelligence", "strategy", "timeline", "documents"}
 
-        tasks = [AgentTask(name="collect_intelligence", description="收集并标准化招生情报", agent="aie")]
+        tasks = [
+            AgentTask(
+                name="collect_intelligence",
+                description="收集并标准化招生情报",
+                agent="aie",
+            )
+        ]
         if "strategy" in selected:
-            tasks.append(AgentTask(name="evaluate_strategy", description="完成选校分层与风险排序", agent="sae"))
+            tasks.append(
+                AgentTask(
+                    name="evaluate_strategy",
+                    description="完成选校分层与风险排序",
+                    agent="sae",
+                    depends_on=["collect_intelligence"],
+                    required_memory=["aie"],
+                )
+            )
         if "timeline" in selected:
-            tasks.append(AgentTask(name="build_timeline", description="生成周级执行计划", agent="dta"))
+            tasks.append(
+                AgentTask(
+                    name="build_timeline",
+                    description="生成周级执行计划",
+                    agent="dta",
+                    depends_on=["evaluate_strategy"],
+                    required_memory=["aie", "sae"],
+                )
+            )
         if "documents" in selected:
-            tasks.append(AgentTask(name="draft_documents", description="输出文书与面试素材建议", agent="cds"))
+            tasks.append(
+                AgentTask(
+                    name="draft_documents",
+                    description="输出文书与面试素材建议",
+                    agent="cds",
+                    depends_on=["evaluate_strategy", "build_timeline"],
+                    required_memory=["sae", "dta"],
+                    can_degrade=True,
+                )
+            )
 
         rationale = f"匹配到意图: {', '.join(sorted(selected))}"
         return RoutePlan(intent=self.default_intent, tasks=tasks, rationale=rationale)
