@@ -6,7 +6,13 @@ from typing import cast
 
 from admitpilot.agents.base import BaseAgent
 from admitpilot.agents.sae.service import StrategicAdmissionsService
-from admitpilot.core.schemas import AIEAgentOutput, AgentResult, AgentTask, ApplicationContext, SAEAgentOutput
+from admitpilot.core.schemas import (
+    AgentResult,
+    AgentTask,
+    AIEAgentOutput,
+    ApplicationContext,
+    SAEAgentOutput,
+)
 
 
 class SAEAgent(BaseAgent):
@@ -23,23 +29,23 @@ class SAEAgent(BaseAgent):
         intelligence = cast(
             AIEAgentOutput,
             context.shared_memory.get(
-            "aie",
-            {
-                "cycle": "",
-                "as_of_date": "",
-                "target_schools": [],
-                "target_program": "",
-                "official_status_by_school": {},
-                "official_records": [],
-                "case_records": [],
-                "case_patterns": [],
-                "forecast_signals": [],
-                "evidence_levels": {},
-                "official_confidence": 0.0,
-                "case_confidence": 0.0,
-                "cache_hit_count": 0,
-                "prediction_used": False,
-            },
+                "aie",
+                {
+                    "cycle": "",
+                    "as_of_date": "",
+                    "target_schools": [],
+                    "target_program": "",
+                    "official_status_by_school": {},
+                    "official_records": [],
+                    "case_records": [],
+                    "case_patterns": [],
+                    "forecast_signals": [],
+                    "evidence_levels": {},
+                    "official_confidence": 0.0,
+                    "case_confidence": 0.0,
+                    "cache_hit_count": 0,
+                    "prediction_used": False,
+                },
             ),
         )
         report = self.service.evaluate(user_profile=context.profile, intelligence=intelligence)

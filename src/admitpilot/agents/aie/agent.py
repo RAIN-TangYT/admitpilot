@@ -8,7 +8,7 @@ from typing import Any, cast
 
 from admitpilot.agents.aie.service import AdmissionsIntelligenceService
 from admitpilot.agents.base import BaseAgent
-from admitpilot.core.schemas import AIEAgentOutput, AgentResult, AgentTask, ApplicationContext
+from admitpilot.core.schemas import AgentResult, AgentTask, AIEAgentOutput, ApplicationContext
 
 
 class AIEAgent(BaseAgent):
@@ -40,7 +40,9 @@ class AIEAgent(BaseAgent):
         )
         case_confidence = 0.0
         if pack.case_long_memory:
-            case_confidence = sum(item.confidence for item in pack.case_long_memory) / len(pack.case_long_memory)
+            case_confidence = sum(item.confidence for item in pack.case_long_memory) / len(
+                pack.case_long_memory
+            )
         prediction_used = any(item.is_predicted for item in pack.official_cycle_snapshots)
         output: AIEAgentOutput = {
             "cycle": cycle,
@@ -82,7 +84,11 @@ class AIEAgent(BaseAgent):
     def _resolve_target_schools(self, task: AgentTask, context: ApplicationContext) -> list[str]:
         payload_schools = task.payload.get("target_schools", [])
         constraint_schools = context.constraints.get("target_schools", [])
-        schools = payload_schools if isinstance(payload_schools, list) and payload_schools else constraint_schools
+        schools = (
+            payload_schools
+            if isinstance(payload_schools, list) and payload_schools
+            else constraint_schools
+        )
         if isinstance(schools, list) and schools:
             return [str(item).upper() for item in schools]
         if context.profile.target_schools:

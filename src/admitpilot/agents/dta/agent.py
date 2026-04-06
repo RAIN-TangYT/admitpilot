@@ -30,16 +30,16 @@ class DTAAgent(BaseAgent):
         sae_data = cast(
             SAEAgentOutput,
             context.shared_memory.get(
-            "sae",
-            {
-                "summary": "",
-                "model_breakdown": {},
-                "strengths": [],
-                "weaknesses": [],
-                "gap_actions": [],
-                "recommendations": [],
-                "ranking_order": [],
-            },
+                "sae",
+                {
+                    "summary": "",
+                    "model_breakdown": {},
+                    "strengths": [],
+                    "weaknesses": [],
+                    "gap_actions": [],
+                    "recommendations": [],
+                    "ranking_order": [],
+                },
             ),
         )
         aie_data = cast(

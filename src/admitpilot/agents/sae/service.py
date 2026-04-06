@@ -101,6 +101,10 @@ class StrategicAdmissionsService:
     def _rule_match_score(
         self, user_profile: UserProfile, intelligence: AIEAgentOutput, school: str
     ) -> float:
+        """规则匹配打分骨架。
+
+        TODO: 接入可配置规则引擎（GPA/语言/先修课/硬门槛）。
+        """
         gpa = float(user_profile.academic_metrics.get("gpa", 3.5))
         lang = float(user_profile.language_scores.get("ielts", 7.0))
         base = min(1.0, (gpa / 4.0) * 0.7 + (lang / 9.0) * 0.3)
@@ -112,6 +116,10 @@ class StrategicAdmissionsService:
     def _semantic_match_score(
         self, user_profile: UserProfile, target_program: str, school: str
     ) -> float:
+        """语义匹配打分骨架。
+
+        TODO: 用 embedding 检索与课程语义匹配替换该占位逻辑。
+        """
         profile_signal = (
             f"{user_profile.major_interest} {' '.join(user_profile.experiences)}".lower()
         )
@@ -123,6 +131,7 @@ class StrategicAdmissionsService:
         return max(0.25, min(0.9, 0.35 + overlap * 0.08 + school_bias))
 
     def _risk_score(self, intelligence: AIEAgentOutput, school: str) -> float:
+        """风险打分骨架，数值越高风险越高。"""
         status = intelligence.get("official_status_by_school", {}).get(school, "predicted")
         forecast_count = len(intelligence.get("forecast_signals", []))
         if status == "official_found":
@@ -159,6 +168,10 @@ class StrategicAdmissionsService:
     def _derive_gap_actions(
         self, user_profile: UserProfile, recommendations: list[ProgramRecommendation]
     ) -> list[str]:
+        """差距分析骨架。
+
+        TODO: 接入按学校项目的结构化 gap taxonomy。
+        """
         actions = [
             "补齐项目契合证据（课程/项目/研究目标映射）",
             "准备 2-3 个可量化成果用于文书与面试",

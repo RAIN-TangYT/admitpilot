@@ -55,6 +55,10 @@ class DynamicTimelineService:
     def _build_milestone_graph(
         self, recommendations: list[dict[str, Any]], schools: list[str]
     ) -> list[Milestone]:
+        """构建里程碑依赖图骨架。
+
+        TODO: 接入学校级 deadline DAG 与材料依赖规则。
+        """
         active_schools = schools or [
             item.get("school", "") for item in recommendations if item.get("school")
         ]
@@ -97,6 +101,10 @@ class DynamicTimelineService:
         constraints: dict[str, Any],
         total_weeks: int,
     ) -> list[Milestone]:
+        """里程碑调度骨架。
+
+        TODO: 实现拓扑排序 + deadline 逆排 + 自动重排。
+        """
         delayed = bool(constraints.get("has_delay", False))
         scheduled: list[Milestone] = []
         for item in milestone_graph:

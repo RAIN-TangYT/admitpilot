@@ -128,6 +128,7 @@ class AdmissionsIntelligenceService:
                 query=query,
                 as_of_date=as_of_date,
             )
+            self._official_long_memory.extend(records)
             confidence = mean(item.confidence for item in records) if records else 0.0
             snapshot = OfficialCycleSnapshot(
                 school=school,
@@ -145,7 +146,11 @@ class AdmissionsIntelligenceService:
         else:
             basis_records = self._historical_official_records(school=school, program=program)
             snapshot = self._build_predicted_snapshot(
-                school=school, program=program, cycle=cycle, as_of_date=as_of_date, basis_records=basis_records
+                school=school,
+                program=program,
+                cycle=cycle,
+                as_of_date=as_of_date,
+                basis_records=basis_records,
             )
         self.official_repository.save(
             key=cache_key,
@@ -179,14 +184,13 @@ class AdmissionsIntelligenceService:
                 confidence_bands["medium"] += 1
             else:
                 confidence_bands["low"] += 1
-        patterns = [
-            f"{cycle} 前置准备更看重课程契合与证据链完整性",
-            "高置信案例显示科研与实习叙事闭环可显著降低拒录风险",
-        ]
         snapshot = CaseSnapshot(
             snapshot_date=as_of_date,
             sample_size=len(records),
-            patterns=patterns,
+            patterns=[
+                f"{cycle} 前置准备更看重课程契合与证据链完整性",
+                "高置信案例显示科研与实习叙事闭环可显著降低拒录风险",
+            ],
             confidence_distribution=confidence_bands,
             expires_at=now + timedelta(days=3),
         )
@@ -222,7 +226,9 @@ class AdmissionsIntelligenceService:
             confidence=confidence,
             is_predicted=True,
             entries=[],
-            prediction_basis=[f"{school}-{item.cycle}-{item.page_type}" for item in basis_records[-6:]],
+            prediction_basis=[
+                f"{school}-{item.cycle}-{item.page_type}" for item in basis_records[-6:]
+            ],
             update_released=False,
             expires_at=datetime.now() + timedelta(days=7),
         )
@@ -238,15 +244,14 @@ class AdmissionsIntelligenceService:
         normalized = program.strip()
         return normalized if normalized else "MSCS"
 
-    def _historical_official_records(self, school: str, program: str) -> list[OfficialAdmissionRecord]:
-        return [item for item in self._official_long_memory if item.school == school and item.program == program]
-
-    def _official_cache_key(self, school: str, program: str, cycle: str, as_of_date: date) -> str:
-        return f"aie:official:{school}:{program}:{cycle}:{as_of_date.isoformat()}"
-
-    def _case_cache_key(self, schools: list[str], program: str, cycle: str, as_of_date: date) -> str:
-        school_part = ",".join(sorted(schools))
-        return f"aie:case_snapshot:{school_part}:{program}:{cycle}:{as_of_date.isoformat()}"
+    def _historical_official_records(
+        self, school: str, program: str
+    ) -> list[OfficialAdmissionRecord]:
+        return [
+            item
+            for item in self._official_long_memory
+            if item.school == school and item.program == program
+        ]
 
     def _case_gateway_records_by_scope(self, schools: list[str], program: str) -> list[CaseRecord]:
         return [
@@ -254,6 +259,15 @@ class AdmissionsIntelligenceService:
             for item in self._case_long_memory
             if item.school in schools and item.program == program
         ]
+
+    def _official_cache_key(self, school: str, program: str, cycle: str, as_of_date: date) -> str:
+        return f"aie:official:{school}:{program}:{cycle}:{as_of_date.isoformat()}"
+
+    def _case_cache_key(
+        self, schools: list[str], program: str, cycle: str, as_of_date: date
+    ) -> str:
+        school_part = ",".join(sorted(schools))
+        return f"aie:case_snapshot:{school_part}:{program}:{cycle}:{as_of_date.isoformat()}"
 
     def _build_official_long_memory(self) -> list[OfficialAdmissionRecord]:
         records: list[OfficialAdmissionRecord] = []

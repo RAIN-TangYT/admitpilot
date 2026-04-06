@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 @dataclass(slots=True)
 class NarrativeFactSlot:
-    """文书事实槽位定义。"""
+    """文书事实槽位。"""
 
     slot_id: str
     value: str
@@ -17,7 +17,7 @@ class NarrativeFactSlot:
 
 @dataclass(slots=True)
 class DocumentDraft:
-    """单个文书草稿元信息。"""
+    """文书草稿框架。"""
 
     document_type: str
     target_school: str
@@ -25,7 +25,16 @@ class DocumentDraft:
     content_outline: list[str] = field(default_factory=list)
     fact_slots: list[NarrativeFactSlot] = field(default_factory=list)
     risks: list[str] = field(default_factory=list)
-    review_status: str = "needs_human_review"
+    review_status: str = "draft"
+
+
+@dataclass(slots=True)
+class ConsistencyIssue:
+    """跨文档一致性问题。"""
+
+    severity: str
+    message: str
+    impacted_documents: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)

@@ -28,6 +28,7 @@ from admitpilot.core.schemas import (
     DTAAgentOutput,
     SharedMemory,
     SAEAgentOutput,
+    SharedMemory,
 )
 from admitpilot.pao.contracts import OrchestrationRequest, OrchestrationResponse
 from admitpilot.pao.router import IntentRouter
@@ -387,6 +388,24 @@ class PrincipalApplicationOrchestrator:
             blocked_by=blocked_by,
         )
 
+    def _resolve_blockers(
+        self, task: AgentTask, context: ApplicationContext, prior_results: list[AgentResult]
+    ) -> list[str]:
+        """检查任务依赖与共享内存依赖是否满足。"""
+        results_by_task = {item.task: item for item in prior_results}
+        blockers: list[str] = []
+        for dependency in task.depends_on:
+            if dependency not in results_by_task:
+                blockers.append(f"missing_task:{dependency}")
+                continue
+            dependency_result = results_by_task[dependency]
+            if dependency_result.status != TaskStatus.SUCCESS:
+                blockers.append(f"failed_task:{dependency}")
+        for memory_key in task.required_memory:
+            if memory_key not in context.shared_memory:
+                blockers.append(f"missing_memory:{memory_key}")
+        return blockers
+
     def _build_failed_result(
         self,
         task: AgentTask,
@@ -404,6 +423,25 @@ class PrincipalApplicationOrchestrator:
             output={"error": reason, "message": message},
             confidence=0.0,
             trace=trace or [f"{agent_name}:{task.name}:{reason}:{message}"],
+        )
+
+    def _build_skipped_result(
+        self,
+        task: AgentTask,
+        agent_name: str,
+        reason: str,
+        blocked_by: list[str],
+    ) -> AgentResult:
+        """生成被依赖阻塞的任务结果。"""
+        return AgentResult(
+            agent=agent_name,
+            task=task.name,
+            success=False,
+            status=TaskStatus.SKIPPED,
+            output={"error": reason, "message": "依赖未满足，任务被跳过"},
+            confidence=0.0,
+            trace=[f"{agent_name}:{task.name}:{reason}"],
+            blocked_by=blocked_by,
         )
 
     def _write_shared_memory(self, context: ApplicationContext, result: AgentResult) -> None:

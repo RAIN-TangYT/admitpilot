@@ -17,7 +17,9 @@ from admitpilot.core.schemas import DTAAgentOutput, SAEAgentOutput
 class CoreDocumentService:
     """负责文书叙事与面试素材生成。"""
 
-    def build_support_pack(self, strategy: SAEAgentOutput, timeline: DTAAgentOutput) -> DocumentSupportPack:
+    def build_support_pack(
+        self, strategy: SAEAgentOutput, timeline: DTAAgentOutput
+    ) -> DocumentSupportPack:
         """根据策略和时间线输出文书与面试支持包。"""
         recommendations = strategy.get("recommendations", [])
         schools = [str(item.get("school", "")) for item in recommendations if item.get("school")]
@@ -39,6 +41,10 @@ class CoreDocumentService:
     def _build_fact_slots(
         self, strategy: SAEAgentOutput, timeline: DTAAgentOutput
     ) -> list[NarrativeFactSlot]:
+        """事实槽位构建骨架。
+
+        TODO: 接入用户真实经历解析与证据引用系统。
+        """
         ranking = strategy.get("ranking_order", [])
         milestones = timeline.get("milestones", [])
         return [
@@ -112,6 +118,10 @@ class CoreDocumentService:
     def _check_cross_document_consistency(
         self, drafts: list[DocumentDraft]
     ) -> list[ConsistencyIssue]:
+        """一致性检查骨架。
+
+        TODO: 用事实图和实体对齐做自动化校验。
+        """
         issues: list[ConsistencyIssue] = []
         has_cv = any(item.document_type == "cv" for item in drafts)
         has_sop = any(item.document_type == "sop" for item in drafts)

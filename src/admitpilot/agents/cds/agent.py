@@ -30,29 +30,29 @@ class CDSAgent(BaseAgent):
         strategy = cast(
             SAEAgentOutput,
             context.shared_memory.get(
-            "sae",
-            {
-                "summary": "",
-                "model_breakdown": {},
-                "strengths": [],
-                "weaknesses": [],
-                "gap_actions": [],
-                "recommendations": [],
-                "ranking_order": [],
-            },
+                "sae",
+                {
+                    "summary": "",
+                    "model_breakdown": {},
+                    "strengths": [],
+                    "weaknesses": [],
+                    "gap_actions": [],
+                    "recommendations": [],
+                    "ranking_order": [],
+                },
             ),
         )
         timeline = cast(
             DTAAgentOutput,
             context.shared_memory.get(
-            "dta",
-            {
-                "board_title": "",
-                "milestones": [],
-                "weekly_plan": [],
-                "risk_markers": [],
-                "document_instructions": [],
-            },
+                "dta",
+                {
+                    "board_title": "",
+                    "milestones": [],
+                    "weekly_plan": [],
+                    "risk_markers": [],
+                    "document_instructions": [],
+                },
             ),
         )
         pack = self.service.build_support_pack(strategy=strategy, timeline=timeline)
