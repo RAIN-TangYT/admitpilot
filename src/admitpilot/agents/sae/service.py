@@ -18,40 +18,15 @@ class StrategicAdmissionsService:
             intelligence=intelligence, user_profile=user_profile
         )
         target_program = intelligence.get("target_program", user_profile.major_interest or "MSCS")
-        recommendations: list[ProgramRecommendation] = []
-        for school in target_schools:
-            rule_score = self._rule_match_score(
-                user_profile=user_profile, intelligence=intelligence, school=school
-            )
-            semantic_score = self._semantic_match_score(
-                user_profile=user_profile,
-                target_program=target_program,
+        recommendations = [
+            self._build_recommendation(
                 school=school,
+                target_program=target_program,
+                user_profile=user_profile,
+                intelligence=intelligence,
             )
-            risk_score = self._risk_score(intelligence=intelligence, school=school)
-            overall_score = (
-                self.MODEL_BREAKDOWN["rule"] * rule_score
-                + self.MODEL_BREAKDOWN["semantic"] * semantic_score
-                + self.MODEL_BREAKDOWN["risk"] * (1 - risk_score)
-            )
-            tier = self._tier_from_score(overall_score=overall_score)
-            recommendations.append(
-                ProgramRecommendation(
-                    school=school,
-                    program=target_program,
-                    tier=tier,
-                    rule_score=rule_score,
-                    semantic_score=semantic_score,
-                    risk_score=risk_score,
-                    overall_score=overall_score,
-                    reasons=self._build_reasons(
-                        school=school,
-                        rule_score=rule_score,
-                        semantic_score=semantic_score,
-                        risk_score=risk_score,
-                    ),
-                )
-            )
+            for school in target_schools
+        ]
         recommendations.sort(key=lambda item: item.overall_score, reverse=True)
         ranking_order = [f"{item.school}:{item.program}" for item in recommendations]
         strengths, weaknesses = self._summarize_strength_weakness(user_profile=user_profile)
@@ -84,6 +59,44 @@ class StrategicAdmissionsService:
             schools = user_profile.target_schools
         normalized = [item.upper() for item in schools if item.upper() in self.SUPPORTED_SCHOOLS]
         return normalized or list(self.SUPPORTED_SCHOOLS)
+
+    def _build_recommendation(
+        self,
+        school: str,
+        target_program: str,
+        user_profile: UserProfile,
+        intelligence: AIEAgentOutput,
+    ) -> ProgramRecommendation:
+        rule_score = self._rule_match_score(
+            user_profile=user_profile, intelligence=intelligence, school=school
+        )
+        semantic_score = self._semantic_match_score(
+            user_profile=user_profile,
+            target_program=target_program,
+            school=school,
+        )
+        risk_score = self._risk_score(intelligence=intelligence, school=school)
+        overall_score = (
+            self.MODEL_BREAKDOWN["rule"] * rule_score
+            + self.MODEL_BREAKDOWN["semantic"] * semantic_score
+            + self.MODEL_BREAKDOWN["risk"] * (1 - risk_score)
+        )
+        tier = self._tier_from_score(overall_score=overall_score)
+        return ProgramRecommendation(
+            school=school,
+            program=target_program,
+            tier=tier,
+            rule_score=rule_score,
+            semantic_score=semantic_score,
+            risk_score=risk_score,
+            overall_score=overall_score,
+            reasons=self._build_reasons(
+                school=school,
+                rule_score=rule_score,
+                semantic_score=semantic_score,
+                risk_score=risk_score,
+            ),
+        )
 
     def _rule_match_score(
         self, user_profile: UserProfile, intelligence: AIEAgentOutput, school: str
