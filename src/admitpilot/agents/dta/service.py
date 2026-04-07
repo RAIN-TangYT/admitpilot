@@ -32,7 +32,7 @@ class DynamicTimelineService:
         schools = intelligence.get("target_schools", [])
         recommendations = strategy.get("recommendations", [])
         milestone_graph = self._build_milestone_graph(
-            recommendations=recommendations, schools=schools
+            strategy=strategy, recommendations=recommendations, schools=schools
         )
         milestones = self._schedule_milestones(
             milestone_graph=milestone_graph,
@@ -69,22 +69,51 @@ class DynamicTimelineService:
         )
 
     def _build_milestone_graph(
-        self, recommendations: list[dict[str, Any]], schools: list[str]
+        self, strategy: SAEAgentOutput, recommendations: list[dict[str, Any]], schools: list[str]
     ) -> list[Milestone]:
         """构建里程碑依赖图骨架。
-
-        TODO: 接入学校级 deadline DAG 与材料依赖规则。
+        
+        基于 SAE 输出的 gap_actions 动态添加前置里程碑节点。
         """
         active_schools = schools or [
             item.get("school", "") for item in recommendations if item.get("school")
         ]
         school_scope = [item for item in active_schools if item]
+        
         milestones = [
             Milestone(key="scope_lock", title="锁定项目池与优先级", due_week=1),
+        ]
+        
+        # 动态解析 SAE 的 Gap Actions
+        gap_actions = strategy.get("gap_actions", [])
+        has_language_gap = any(kw in action for action in gap_actions for kw in ["语言", "雅思", "托福", "IELTS", "TOEFL"])
+        has_bg_gap = any(kw in action for action in gap_actions for kw in ["科研", "实习", "项目", "课程"])
+        
+        if has_language_gap:
+            milestones.append(
+                Milestone(
+                    key="language_test", 
+                    title="完成语言标化考试出分", 
+                    due_week=2, 
+                    depends_on=["scope_lock"]
+                )
+            )
+            
+        if has_bg_gap:
+            milestones.append(
+                Milestone(
+                    key="background_enhancement", 
+                    title="完成背景提升核心产出 (项目/实习)", 
+                    due_week=4, 
+                    depends_on=["scope_lock"]
+                )
+            )
+
+        milestones.extend([
             Milestone(
                 key="doc_pack_v1",
                 title="完成 SoP/CV 第一版",
-                due_week=3,
+                due_week=3 if not has_bg_gap else 5,
                 depends_on=["scope_lock"],
             ),
             Milestone(
@@ -99,7 +128,8 @@ class DynamicTimelineService:
                 due_week=7,
                 depends_on=["submission_batch_1"],
             ),
-        ]
+        ])
+        
         if school_scope and len(school_scope) >= 4:
             milestones.append(
                 Milestone(
@@ -206,6 +236,9 @@ class DynamicTimelineService:
         payload = {
             "constraints": constraints,
             "ranking_order": strategy.get("ranking_order", []),
+            "strengths": strategy.get("strengths", []),
+            "weaknesses": strategy.get("weaknesses", []),
+            "gap_actions": strategy.get("gap_actions", []),
             "official_status_by_school": intelligence.get("official_status_by_school", {}),
             "milestones": [
                 {"key": item.key, "title": item.title, "due_week": item.due_week}
@@ -220,6 +253,8 @@ class DynamicTimelineService:
         }
         prompt = "\n".join(
             [
+                "你是一个严格的留学时间线规划师。请结合该申请者的优劣势 (strengths/weaknesses) 和短板提升行动 (gap_actions)，为每个 week 生成具体、可执行的 weekly_focus 和 week_items。",
+                "必须输出合法的 JSON 格式。避免在字符串中使用未转义的双引号，请检查括号与逗号是否闭合。",
                 "请基于输入输出 JSON。",
                 (
                     '返回格式：{"milestone_titles":{"scope_lock":"..."},"weekly_focus":{"1":"..."},'
