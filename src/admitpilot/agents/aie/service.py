@@ -202,7 +202,6 @@ class AdmissionsIntelligenceService:
                 query=query,
                 as_of_date=as_of_date,
             )
-            self._official_long_memory.extend(records)
             confidence = mean(item.confidence for item in records) if records else 0.0
             snapshot = OfficialCycleSnapshot(
                 school=school,
@@ -216,7 +215,7 @@ class AdmissionsIntelligenceService:
                 update_released=True,
                 expires_at=now + timedelta(hours=24),
             )
-            self._official_long_memory.extend(records)
+            self._append_official_history(records)
         else:
             basis_records = self._historical_official_records(school=school, program=program)
             snapshot = self._build_predicted_snapshot(
@@ -375,3 +374,16 @@ class AdmissionsIntelligenceService:
     def _historical_confidence(self, offset: int) -> float:
         """历史数据越久远，置信轻微衰减。"""
         return max(0.72, 0.9 * math.exp(-0.03 * offset))
+
+    def _append_official_history(self, records: list[OfficialAdmissionRecord]) -> None:
+        existing_keys = {self._official_record_key(item) for item in self._official_long_memory}
+        for record in records:
+            key = self._official_record_key(record)
+            if key in existing_keys:
+                continue
+            self._official_long_memory.append(record)
+            existing_keys.add(key)
+
+    def _official_record_key(self, record: OfficialAdmissionRecord) -> tuple[str, str, str, str, str]:
+        version = record.version_id or record.source_hash
+        return (record.school, record.program, record.cycle, record.page_type, version)

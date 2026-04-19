@@ -156,10 +156,10 @@ class StrategicAdmissionsService:
 
     def _tier_from_score(self, overall_score: float) -> str:
         if overall_score >= 0.72:
-            return "match"
+            return "safety"
         if overall_score >= 0.6:
-            return "reach"
-        return "safety"
+            return "match"
+        return "reach"
 
     def _build_reasons(
         self, school: str, rule_score: float, semantic_score: float, risk_score: float

@@ -37,3 +37,19 @@ def test_aie_service_enforces_supported_school_scope() -> None:
     )
     scoped = sorted(item.school for item in pack.official_cycle_snapshots)
     assert scoped == sorted(list(service.OFFICIAL_SCHOOLS))
+
+
+def test_aie_service_appends_fetched_official_records_only_once() -> None:
+    service = AdmissionsIntelligenceService()
+    base_count = len(service._official_long_memory)
+    pack = service.retrieve(
+        query="查看官网要求",
+        cycle="2026",
+        schools=["HKUST"],
+        as_of_date=date.today(),
+    )
+
+    fetched_count = sum(len(item.entries) for item in pack.official_cycle_snapshots)
+
+    assert fetched_count > 0
+    assert len(service._official_long_memory) - base_count == fetched_count

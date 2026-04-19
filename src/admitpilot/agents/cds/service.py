@@ -28,6 +28,8 @@ class CoreDocumentService:
         self, strategy: SAEAgentOutput, timeline: DTAAgentOutput
     ) -> DocumentSupportPack:
         """根据策略和时间线输出文书与面试支持包。"""
+        if self._missing_upstream_context(strategy=strategy, timeline=timeline):
+            return self._build_missing_evidence_pack(strategy=strategy, timeline=timeline)
         recommendations = strategy.get("recommendations", [])
         schools = [str(item.get("school", "")) for item in recommendations if item.get("school")]
         school_scope = schools or ["NUS", "NTU", "HKU", "CUHK", "HKUST"]
@@ -49,6 +51,45 @@ class CoreDocumentService:
             drafts=drafts,
             interview_cues=interview_cues,
             consistency_issues=issues,
+            review_checklist=checklist,
+        )
+
+    def _missing_upstream_context(
+        self, strategy: SAEAgentOutput, timeline: DTAAgentOutput
+    ) -> bool:
+        has_strategy = bool(strategy.get("recommendations")) and bool(strategy.get("ranking_order"))
+        has_timeline = bool(timeline.get("milestones")) and bool(timeline.get("weekly_plan"))
+        return not (has_strategy and has_timeline)
+
+    def _build_missing_evidence_pack(
+        self, strategy: SAEAgentOutput, timeline: DTAAgentOutput
+    ) -> DocumentSupportPack:
+        missing_inputs: list[str] = []
+        if not strategy.get("recommendations") or not strategy.get("ranking_order"):
+            missing_inputs.append("选校策略")
+        if not timeline.get("milestones") or not timeline.get("weekly_plan"):
+            missing_inputs.append("时间线")
+        missing_summary = "、".join(missing_inputs) or "上游上下文"
+        issue = ConsistencyIssue(
+            severity="high",
+            message=f"缺少上游{missing_summary}，当前不生成正式文书草稿与面试材料",
+            impacted_documents=["sop", "cv", "interview"],
+        )
+        checklist = [
+            f"先补齐上游{missing_summary}，再生成个性化文书与面试材料",
+            "补充可验证的经历事实、项目匹配证据与执行安排",
+            "上游结果就绪后重新运行 CDS，避免基于缺证据内容继续润色",
+        ]
+        interview_cues = [
+            InterviewCue(
+                question="当前状态",
+                cue=f"缺少{missing_summary}，暂不生成正式面试要点。",
+            )
+        ]
+        return DocumentSupportPack(
+            drafts=[],
+            interview_cues=interview_cues,
+            consistency_issues=[issue],
             review_checklist=checklist,
         )
 
