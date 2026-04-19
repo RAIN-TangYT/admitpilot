@@ -1,15 +1,15 @@
-"""Memory 层接口定义。"""
+"""Memory contracts for short-term and versioned stores."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
-from enum import StrEnum
-from typing import Any, Protocol
+from datetime import datetime, timedelta
+from enum import Enum
+from typing import Any
 
 
-class MemoryNamespace(StrEnum):
-    """Memory 命名空间。"""
+class MemoryNamespace(str, Enum):
+    """Well-known memory namespaces."""
 
     SESSION = "session"
     APPLICATION = "application"
@@ -23,7 +23,7 @@ class MemoryNamespace(StrEnum):
 
 @dataclass(slots=True)
 class VersionedRecord:
-    """通用版本化记录。"""
+    """Structured versioned record used by compatibility tests."""
 
     tenant_id: str
     user_id: str
@@ -37,49 +37,30 @@ class VersionedRecord:
     created_at: datetime = field(default_factory=datetime.utcnow)
 
 
-class SessionMemoryStore(Protocol):
-    """会话内存接口（建议 Redis）。"""
+@dataclass(slots=True)
+class MemoryRecord:
+    """Runtime memory item with metadata and versioning."""
 
-    def get(self, key: str) -> dict[str, Any] | None:
-        """读取会话状态。"""
+    namespace: str
+    key: str
+    value: dict[str, Any]
+    version: int = 1
+    source: str = "unknown"
+    confidence: float = 0.0
+    evidence_level: str = "unknown"
+    lineage: list[str] = field(default_factory=list)
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    expires_at: datetime | None = None
 
-    def set(self, key: str, value: dict[str, Any], ttl_seconds: int) -> None:
-        """写入会话状态。"""
-
-
-class VersionedMemoryStore(Protocol):
-    """版本化结构化存储接口（建议 PostgreSQL）。"""
-
-    def upsert(self, record: VersionedRecord) -> str:
-        """写入并返回版本号。"""
-
-    def get_latest(
-        self,
-        namespace: MemoryNamespace,
-        tenant_id: str,
-        user_id: str,
-        application_id: str,
-        cycle: str,
-    ) -> VersionedRecord | None:
-        """读取最新版本。"""
-
-    def get_by_version(self, namespace: MemoryNamespace, version_id: str) -> VersionedRecord | None:
-        """按版本读取。"""
-
-
-class ArtifactObjectStore(Protocol):
-    """大文本/原文对象存储接口（建议 S3/MinIO）。"""
-
-    def put_text(self, key: str, content: str) -> str:
-        """写入文本并返回对象引用。"""
-
-    def get_text(self, key: str) -> str:
-        """读取文本。"""
+    def is_expired(self, now: datetime | None = None) -> bool:
+        if self.expires_at is None:
+            return False
+        return (now or datetime.utcnow()) >= self.expires_at
 
 
 @dataclass(slots=True)
 class MemoryTopology:
-    """Memory 部署拓扑。"""
+    """Suggested backend topology."""
 
     session_backend: str
     relational_backend: str
@@ -90,7 +71,6 @@ class MemoryTopology:
 
 
 def default_memory_topology() -> MemoryTopology:
-    """默认拓扑建议。"""
     return MemoryTopology(
         session_backend="redis",
         relational_backend="postgresql",
@@ -103,3 +83,9 @@ def default_memory_topology() -> MemoryTopology:
             "落地跨版本回放工具",
         ),
     )
+
+
+def default_expiry(hours: int = 24) -> datetime:
+    """Build a default expiration timestamp."""
+
+    return datetime.utcnow() + timedelta(hours=hours)

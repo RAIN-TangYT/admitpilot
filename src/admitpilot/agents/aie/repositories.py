@@ -1,75 +1,78 @@
-"""AIE 记忆仓储接口与默认内存实现。"""
+"""Snapshot repository abstractions and in-memory implementations."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Protocol
+from typing import Protocol, TypeVar
 
 from admitpilot.agents.aie.schemas import CaseSnapshot, OfficialCycleSnapshot
 
+T = TypeVar("T")
+
 
 @dataclass(slots=True)
-class _SnapshotCacheEntry:
-    """带过期时间的缓存条目。"""
-
-    value: OfficialCycleSnapshot | CaseSnapshot
+class _CacheEntry:
+    value: object
     expires_at: datetime
 
 
 class OfficialSnapshotRepository(Protocol):
-    """官方快照仓储接口。"""
+    """Repository for official snapshots."""
 
     def get(self, key: str, as_of: datetime) -> OfficialCycleSnapshot | None:
-        """读取官方快照。"""
+        """Read a non-expired snapshot by key."""
 
     def save(self, key: str, value: OfficialCycleSnapshot, expires_at: datetime) -> None:
-        """写入官方快照。"""
+        """Persist snapshot with expiration."""
 
 
 class CaseSnapshotRepository(Protocol):
-    """案例快照仓储接口。"""
+    """Repository for case snapshots."""
 
     def get(self, key: str, as_of: datetime) -> CaseSnapshot | None:
-        """读取案例快照。"""
+        """Read a non-expired case snapshot by key."""
 
     def save(self, key: str, value: CaseSnapshot, expires_at: datetime) -> None:
-        """写入案例快照。"""
+        """Persist case snapshot with expiration."""
 
 
-class InMemoryOfficialSnapshotRepository:
-    """官方快照内存仓储。"""
+@dataclass(slots=True)
+class _InMemoryTTLRepository:
+    _entries: dict[str, _CacheEntry] = field(default_factory=dict)
 
-    def __init__(self) -> None:
-        self._store: dict[str, _SnapshotCacheEntry] = {}
+    def _get(self, key: str, as_of: datetime, expected_type: type[T]) -> T | None:
+        entry = self._entries.get(key)
+        if entry is None:
+            return None
+        if as_of >= entry.expires_at:
+            self._entries.pop(key, None)
+            return None
+        if not isinstance(entry.value, expected_type):
+            return None
+        return entry.value
+
+    def _save(self, key: str, value: object, expires_at: datetime) -> None:
+        self._entries[key] = _CacheEntry(value=value, expires_at=expires_at)
+
+
+@dataclass(slots=True)
+class InMemoryOfficialSnapshotRepository(_InMemoryTTLRepository):
+    """TTL repository for official snapshots."""
 
     def get(self, key: str, as_of: datetime) -> OfficialCycleSnapshot | None:
-        entry = self._store.get(key)
-        if entry is None or entry.expires_at <= as_of:
-            return None
-        value = entry.value
-        if isinstance(value, OfficialCycleSnapshot):
-            return value
-        return None
+        return self._get(key=key, as_of=as_of, expected_type=OfficialCycleSnapshot)
 
     def save(self, key: str, value: OfficialCycleSnapshot, expires_at: datetime) -> None:
-        self._store[key] = _SnapshotCacheEntry(value=value, expires_at=expires_at)
+        self._save(key=key, value=value, expires_at=expires_at)
 
 
-class InMemoryCaseSnapshotRepository:
-    """案例快照内存仓储。"""
-
-    def __init__(self) -> None:
-        self._store: dict[str, _SnapshotCacheEntry] = {}
+@dataclass(slots=True)
+class InMemoryCaseSnapshotRepository(_InMemoryTTLRepository):
+    """TTL repository for case snapshots."""
 
     def get(self, key: str, as_of: datetime) -> CaseSnapshot | None:
-        entry = self._store.get(key)
-        if entry is None or entry.expires_at <= as_of:
-            return None
-        value = entry.value
-        if isinstance(value, CaseSnapshot):
-            return value
-        return None
+        return self._get(key=key, as_of=as_of, expected_type=CaseSnapshot)
 
     def save(self, key: str, value: CaseSnapshot, expires_at: datetime) -> None:
-        self._store[key] = _SnapshotCacheEntry(value=value, expires_at=expires_at)
+        self._save(key=key, value=value, expires_at=expires_at)

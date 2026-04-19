@@ -1,7 +1,4 @@
-"""MCP 方法目录定义。
-
-仅定义契约，不提供具体实现。
-"""
+"""Canonical MCP method catalog."""
 
 from __future__ import annotations
 
@@ -12,7 +9,7 @@ from admitpilot.platform.types import AgentRole
 
 @dataclass(slots=True)
 class MethodContract:
-    """MCP 方法契约。"""
+    """Canonical method contract shared by tests and bootstrap."""
 
     server: str
     method: str

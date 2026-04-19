@@ -1,7 +1,4 @@
-"""MCP 方法级 schema 初始化定义。
-
-当前只做字段级最小校验，后续可替换为 JSON Schema 引擎。
-"""
+"""Method-level schema registry."""
 
 from __future__ import annotations
 
@@ -13,7 +10,7 @@ from admitpilot.platform.mcp.method_specs import METHOD_CATALOG, MethodContract
 
 @dataclass(slots=True)
 class MethodSchema:
-    """方法 schema 抽象。"""
+    """Field-level schema abstraction."""
 
     method: str
     required_fields: tuple[str, ...]
@@ -23,7 +20,7 @@ class MethodSchema:
 
 @dataclass(slots=True)
 class MethodSchemaRegistry:
-    """方法 schema 注册中心。"""
+    """Method schema registry."""
 
     schemas: dict[str, MethodSchema] = field(default_factory=dict)
 
@@ -34,17 +31,13 @@ class MethodSchemaRegistry:
         return self.schemas.get(method)
 
     def validate_required_fields(self, method: str, payload: dict[str, Any]) -> list[str]:
-        """返回缺失字段列表。"""
         schema = self.get(method)
         if schema is None:
             return ["<unknown_method>"]
-        missing = [field for field in schema.required_fields if field not in payload]
-        return missing
+        return [field for field in schema.required_fields if field not in payload]
 
 
 def build_default_method_schema_registry() -> MethodSchemaRegistry:
-    """基于 method catalog 构建默认 schema 注册中心。"""
-
     registry = MethodSchemaRegistry()
     for contract in METHOD_CATALOG:
         registry.register(_schema_from_contract(contract))

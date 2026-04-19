@@ -1,10 +1,11 @@
-"""治理公共组件。"""
+"""Governance exports."""
 
 from admitpilot.platform.governance.contracts import (
     ApprovalRequest,
     ApprovalWorkflow,
     AuditEvent,
     AuditSink,
+    GovernanceEngine,
     GovernanceSuite,
     InMemoryApprovalWorkflow,
     InMemoryAuditSink,
@@ -27,5 +28,6 @@ __all__ = [
     "InMemoryAuditSink",
     "InMemoryApprovalWorkflow",
     "GovernanceSuite",
+    "GovernanceEngine",
     "build_default_governance_suite",
 ]

@@ -1,4 +1,4 @@
-"""Tool 分层与权限注册。"""
+"""Tool registry exports."""
 
 from admitpilot.platform.tools.registry import (
     ToolDefinition,
@@ -7,4 +7,9 @@ from admitpilot.platform.tools.registry import (
     build_default_tool_registry,
 )
 
-__all__ = ["ToolLayer", "ToolDefinition", "ToolRegistry", "build_default_tool_registry"]
+__all__ = [
+    "ToolDefinition",
+    "ToolLayer",
+    "ToolRegistry",
+    "build_default_tool_registry",
+]

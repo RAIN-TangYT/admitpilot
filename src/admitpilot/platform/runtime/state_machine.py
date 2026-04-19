@@ -1,41 +1,45 @@
-"""Runtime 状态机骨架。"""
+"""Workflow state-machine definitions."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from admitpilot.platform.runtime.contracts import WorkflowStatus
 
 
 @dataclass(slots=True)
 class RuntimeStateMachine:
-    """工作流状态迁移校验器。"""
+    """Validate workflow transitions."""
+
+    transitions: dict[WorkflowStatus, set[WorkflowStatus]] = field(
+        default_factory=lambda: {
+            WorkflowStatus.NEW: {WorkflowStatus.INTENT_PARSED, WorkflowStatus.FAILED},
+            WorkflowStatus.INTENT_PARSED: {WorkflowStatus.PLAN_BUILT, WorkflowStatus.FAILED},
+            WorkflowStatus.PLAN_BUILT: {WorkflowStatus.EXECUTING, WorkflowStatus.FAILED},
+            WorkflowStatus.EXECUTING: {
+                WorkflowStatus.AGGREGATING,
+                WorkflowStatus.PARTIAL_DELIVERED,
+                WorkflowStatus.FAILED,
+            },
+            WorkflowStatus.AGGREGATING: {
+                WorkflowStatus.DELIVERED,
+                WorkflowStatus.PARTIAL_DELIVERED,
+                WorkflowStatus.FAILED,
+            },
+            WorkflowStatus.DELIVERED: set(),
+            WorkflowStatus.PARTIAL_DELIVERED: set(),
+            WorkflowStatus.FAILED: set(),
+        }
+    )
 
     def can_transition(self, current: WorkflowStatus, target: WorkflowStatus) -> bool:
-        allowed = _ALLOWED_TRANSITIONS.get(current, ())
-        return target in allowed
+        """Return whether transition is allowed."""
+        if current == target:
+            return True
+        return target in self.transitions.get(current, set())
 
     def transition(self, current: WorkflowStatus, target: WorkflowStatus) -> WorkflowStatus:
+        """Validate and return the target status."""
         if not self.can_transition(current=current, target=target):
-            raise ValueError(f"invalid_transition:{current.value}->{target.value}")
+            raise ValueError(f"Invalid workflow transition: {current.value} -> {target.value}")
         return target
-
-
-_ALLOWED_TRANSITIONS: dict[WorkflowStatus, tuple[WorkflowStatus, ...]] = {
-    WorkflowStatus.NEW: (WorkflowStatus.INTENT_PARSED, WorkflowStatus.FAILED),
-    WorkflowStatus.INTENT_PARSED: (WorkflowStatus.PLAN_BUILT, WorkflowStatus.FAILED),
-    WorkflowStatus.PLAN_BUILT: (WorkflowStatus.EXECUTING, WorkflowStatus.FAILED),
-    WorkflowStatus.EXECUTING: (
-        WorkflowStatus.AGGREGATING,
-        WorkflowStatus.PARTIAL_DELIVERED,
-        WorkflowStatus.FAILED,
-    ),
-    WorkflowStatus.AGGREGATING: (
-        WorkflowStatus.DELIVERED,
-        WorkflowStatus.PARTIAL_DELIVERED,
-        WorkflowStatus.FAILED,
-    ),
-    WorkflowStatus.PARTIAL_DELIVERED: (WorkflowStatus.EXECUTING, WorkflowStatus.FAILED),
-    WorkflowStatus.DELIVERED: (),
-    WorkflowStatus.FAILED: (),
-}

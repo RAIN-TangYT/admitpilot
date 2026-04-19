@@ -1,12 +1,6 @@
-"""MCP 协议与方法契约。"""
+"""MCP exports."""
 
-from admitpilot.platform.mcp.contracts import (
-    MCPError,
-    MCPRequest,
-    MCPResponse,
-    MCPResult,
-    RpcMeta,
-)
+from admitpilot.platform.mcp.contracts import MCPRequest, MCPResponse
 from admitpilot.platform.mcp.method_specs import METHOD_CATALOG, MethodContract
 from admitpilot.platform.mcp.schemas import (
     MethodSchema,
@@ -21,18 +15,15 @@ from admitpilot.platform.mcp.server_registry import (
 )
 
 __all__ = [
-    "RpcMeta",
     "MCPRequest",
-    "MCPResult",
-    "MCPError",
     "MCPResponse",
-    "MethodContract",
     "METHOD_CATALOG",
+    "MCPMethodStub",
+    "MCPServerRegistry",
+    "MCPServerStub",
+    "MethodContract",
     "MethodSchema",
     "MethodSchemaRegistry",
-    "build_default_method_schema_registry",
-    "MCPMethodStub",
-    "MCPServerStub",
-    "MCPServerRegistry",
     "build_default_mcp_server_registry",
+    "build_default_method_schema_registry",
 ]

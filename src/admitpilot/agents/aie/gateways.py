@@ -1,8 +1,7 @@
-"""AIE 外部数据源网关接口。"""
+"""Data source gateway stubs for AIE."""
 
 from __future__ import annotations
 
-import hashlib
 from datetime import date, datetime, timedelta
 from typing import Protocol
 
@@ -10,106 +9,127 @@ from admitpilot.agents.aie.schemas import CaseRecord, OfficialAdmissionRecord
 
 
 class OfficialSourceGateway(Protocol):
-    """官方信息源接口。"""
+    """Gateway for official admissions sources."""
 
     def has_cycle_release(self, school: str, cycle: str, as_of_date: date) -> bool:
-        """判断当前申请季是否已发布可用官方信息。"""
+        """Return whether official release is available."""
 
     def fetch_cycle_records(
         self, school: str, program: str, cycle: str, query: str, as_of_date: date
     ) -> list[OfficialAdmissionRecord]:
-        """拉取当前申请季官方记录。"""
+        """Fetch official records for a cycle."""
 
 
 class CaseSourceGateway(Protocol):
-    """案例信息源接口。"""
+    """Gateway for case-data sources."""
 
     def fetch_case_records(
         self, schools: list[str], program: str, cycle: str, as_of_date: date
     ) -> list[CaseRecord]:
-        """拉取案例记录。"""
+        """Fetch historical cases for target scope."""
 
 
 class StubOfficialSourceGateway:
-    """默认官方网关桩实现。
+    """Deterministic official source stub for local development."""
 
-    TODO: 接入真实抓取与解析链路（官网/API/FAQ/PDF）。
-    """
+    _RELEASED_SCHOOLS = {"HKUST", "NTU", "CUHK"}
 
     def has_cycle_release(self, school: str, cycle: str, as_of_date: date) -> bool:
-        return cycle[-1].isdigit() and (int(cycle[-1]) + len(school)) % 3 != 0
+        del cycle, as_of_date
+        return school in self._RELEASED_SCHOOLS
 
     def fetch_cycle_records(
         self, school: str, program: str, cycle: str, query: str, as_of_date: date
     ) -> list[OfficialAdmissionRecord]:
-        fetched_at = datetime.now()
-        pages = (
-            ("admission", "admission", True, "updated"),
-            ("requirement", "requirement", False, "updated"),
-            ("faq", "faq", True, "new"),
-        )
-        records: list[OfficialAdmissionRecord] = []
-        for page_type, section, changed, change_type in pages:
-            content = f"{school} {cycle} {program} {section} 与查询“{query}”相关。"
-            source_hash = hashlib.sha256(
-                f"{school}|{program}|{cycle}|{page_type}|{content}".encode()
-            ).hexdigest()
-            records.append(
-                OfficialAdmissionRecord(
-                    school=school,
-                    program=program,
-                    cycle=cycle,
-                    page_type=page_type,
-                    source_url=f"https://www.{school.lower()}.edu/admissions/{program.lower()}",
-                    content=content,
-                    published_date=as_of_date,
-                    effective_date=as_of_date,
-                    fetched_at=fetched_at,
-                    source_hash=source_hash,
-                    quality_score=0.9,
-                    confidence=0.9,
-                    version_id=f"{school}-{cycle}-{page_type}-{as_of_date.isoformat()}",
-                    is_policy_change=changed,
-                    change_type=change_type,
-                    delta_summary=f"{school} {page_type} 条目于 {as_of_date.isoformat()} 更新",
-                )
-            )
-        return records
+        del query
+        now = datetime.utcnow()
+        return [
+            OfficialAdmissionRecord(
+                school=school,
+                program=program,
+                cycle=cycle,
+                page_type="requirements",
+                source_url=f"https://www.{school.lower()}.edu/admissions/{program.lower()}",
+                content=f"{school} {program} {cycle} official requirements snapshot",
+                published_date=as_of_date,
+                effective_date=as_of_date,
+                fetched_at=now,
+                source_hash=f"{school}-{program}-{cycle}-official",
+                quality_score=0.92,
+                confidence=0.88,
+                version_id=f"{school}-{cycle}-requirements-v1",
+                is_policy_change=False,
+                change_type="updated",
+                delta_summary="baseline capture",
+            ),
+            OfficialAdmissionRecord(
+                school=school,
+                program=program,
+                cycle=cycle,
+                page_type="deadline",
+                source_url=f"https://www.{school.lower()}.edu/admissions/{program.lower()}/deadline",
+                content=f"{school} {program} deadline overview",
+                published_date=as_of_date,
+                effective_date=as_of_date,
+                fetched_at=now + timedelta(seconds=1),
+                source_hash=f"{school}-{program}-{cycle}-ddl",
+                quality_score=0.9,
+                confidence=0.86,
+                version_id=f"{school}-{cycle}-deadline-v1",
+                is_policy_change=True,
+                change_type="updated",
+                delta_summary="deadline table updated",
+            ),
+        ]
 
 
 class StubCaseSourceGateway:
-    """默认案例网关桩实现。
-
-    TODO: 接入清洗后的 case lake 与可信度标注流水线。
-    """
-
-    _SOURCE_SCORE = {"agency": 0.72, "forum": 0.55, "xiaohongshu": 0.48}
+    """Deterministic case source stub for local development."""
 
     def fetch_case_records(
         self, schools: list[str], program: str, cycle: str, as_of_date: date
     ) -> list[CaseRecord]:
+        now = datetime.utcnow()
         records: list[CaseRecord] = []
-        now = datetime.now()
-        for school in schools:
-            for idx, source_type in enumerate(("agency", "forum", "xiaohongshu"), start=1):
-                score = self._SOURCE_SCORE[source_type]
-                records.append(
-                    CaseRecord(
-                        candidate_fingerprint=f"{school}-{idx}",
-                        school=school,
-                        program=program,
-                        cycle=str(max(int(cycle) - idx, 0)),
-                        source_type=source_type,
-                        source_url=f"https://example.com/{source_type}/{school.lower()}",
-                        background_summary="placeholder: GPA/语言/科研实习标签",
-                        outcome="admit" if idx == 1 else "unknown",
-                        captured_at=now - timedelta(days=idx * 45),
-                        source_site_score=score,
-                        evidence_completeness=0.65 + idx * 0.08,
-                        cross_source_consistency=0.55 + idx * 0.1,
-                        freshness_score=0.9 - idx * 0.1,
-                        confidence=min(0.8, score + 0.1),
-                        credibility_label="high" if idx == 1 else "medium",
-                    )
+        for idx, school in enumerate(schools):
+            records.append(
+                CaseRecord(
+                    candidate_fingerprint=f"anon-{school}-{idx}",
+                    school=school,
+                    program=program,
+                    cycle=cycle,
+                    source_type="community",
+                    source_url=f"https://cases.example/{school.lower()}",
+                    background_summary=f"{school} candidate profile summary",
+                    outcome="offer",
+                    captured_at=now - timedelta(days=idx * 7),
+                    source_site_score=0.7,
+                    evidence_completeness=0.72,
+                    cross_source_consistency=0.68,
+                    freshness_score=max(0.5, 0.9 - idx * 0.1),
+                    confidence=max(0.55, 0.82 - idx * 0.06),
+                    credibility_label="medium" if idx % 2 else "high",
                 )
+            )
+        if not records:
+            records.append(
+                CaseRecord(
+                    candidate_fingerprint="anon-default",
+                    school="NUS",
+                    program=program,
+                    cycle=cycle,
+                    source_type="community",
+                    source_url="https://cases.example/default",
+                    background_summary="default case summary",
+                    outcome="offer",
+                    captured_at=now,
+                    source_site_score=0.7,
+                    evidence_completeness=0.7,
+                    cross_source_consistency=0.65,
+                    freshness_score=0.75,
+                    confidence=0.7,
+                    credibility_label="medium",
+                )
+            )
+        del as_of_date
         return records

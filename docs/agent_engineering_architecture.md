@@ -12,33 +12,15 @@
 - Memory Plane：分层记忆与版本化存储。
 - Governance Plane：合规校验、PII、审计与审批闸门。
 
-## 3. 代码映射（已搭接口骨架）
-- 统一契约单一来源：
-  - `src/admitpilot/platform/runtime/contracts.py`
-  - 说明：`AgentTask/AgentResult/TaskStatus/WorkflowStatus` 为全系统唯一定义，`core.schemas` 仅复用。
-- 公共类型：
-  - `src/admitpilot/platform/types.py`
-- MCP 协议：
-  - `src/admitpilot/platform/mcp/contracts.py`
-  - `src/admitpilot/platform/mcp/method_specs.py`
-  - `src/admitpilot/platform/mcp/schemas.py`
-  - `src/admitpilot/platform/mcp/server_registry.py`
-- Tool Registry：
-  - `src/admitpilot/platform/tools/registry.py`
-- Memory 协议：
-  - `src/admitpilot/platform/memory/contracts.py`
-  - `src/admitpilot/platform/memory/adapters.py`
-- Runtime 协议与状态机：
-  - `src/admitpilot/platform/runtime/contracts.py`
-  - `src/admitpilot/platform/runtime/state_machine.py`
-- Capability 权限模型：
-  - `src/admitpilot/platform/security/capability.py`
-- 统一错误码：
-  - `src/admitpilot/platform/common/errors.py`
-- 公共区初始化：
-  - `src/admitpilot/platform/bootstrap.py`
-  - `src/admitpilot/platform/governance/contracts.py`
-  - `src/admitpilot/platform/observability/contracts.py`
+## 3. 代码映射
+- 统一契约：`src/admitpilot/platform/runtime/contracts.py`
+- Runtime 状态机：`src/admitpilot/platform/runtime/state_machine.py`
+- Memory 协议与适配：`src/admitpilot/platform/memory/contracts.py`、`src/admitpilot/platform/memory/adapters.py`
+- MCP 协议与目录：`src/admitpilot/platform/mcp/*`
+- Tool Registry：`src/admitpilot/platform/tools/registry.py`
+- Capability 权限：`src/admitpilot/platform/security/capability.py`
+- 治理与可观测：`src/admitpilot/platform/governance/contracts.py`、`src/admitpilot/platform/observability/contracts.py`
+- 公共装配入口：`src/admitpilot/platform/bootstrap.py`
 
 ## 4. 接口设计原则
 - 所有 MCP 请求必须携带 `trace_id` 与 `tool_run_id`。
@@ -53,78 +35,63 @@
   - 异常分支：`PARTIAL_DELIVERED`, `FAILED`
 - Task 子状态：
   - `PENDING/READY/RUNNING/SUCCESS/FAILED/SKIPPED/DEGRADED`
-- 迁移规则已在 `runtime/state_machine.py` 预定义。
 
-## 6. 知识更新机制（目标流程）
+## 6. 知识更新机制
 - `discover -> fetch -> parse -> normalize -> quality_gate -> snapshot_publish -> index_refresh`
-- 官方快照变更触发事件：
+- 关键事件：
   - `official_snapshot_updated`
   - `strategy_recomputed`
   - `timeline_replanned`
   - `artifact_review_required`
 
-## 7. 反幻觉与防污染策略
-- 证据门控：无证据事实不能输出确定性结论。
-- 不确定性传递：AIE `predicted` 必须传递到 SAE/DTA/CDS。
-- 上下文分区：事实区、推断区、草稿区分离写入。
-- 冲突消解：官方快照优先级最高，覆盖历史推断。
-- 输出双闸门：`consistency_check + policy_validate`。
-
-## 8. 分工 TODO（可直接建任务）
-
-### PAO（Principal Application Orchestrator）
-- [ ] 完成 `WorkflowStatus` 全状态落盘与回放接口，支持 `PARTIAL_DELIVERED` 恢复执行。
-- [ ] 接入 capability token 下发与 method/scope 校验拦截（调用前置）。
-- [ ] 将任务依赖门控与 `can_degrade` 规则抽成独立策略模块，便于灰度配置。
-- [ ] 实现统一聚合器输出模板（结论/证据/置信度/下一步动作/待确认项）。
-- [ ] 完成跨 Agent 事件编排：`official_snapshot_updated -> strategy_recomputed -> timeline_replanned -> artifact_review_required`。
-
-### AIE（Admissions Intelligence Engine）
-- [ ] 对接真实官方源抓取链路（站点白名单、频控、失败重试、反爬策略）。
-- [ ] 实现 `official.parse_requirements` 与字段级置信度评估。
-- [ ] 实现快照版本化与 `official.snapshot_diff` 结构化变更检测。
-- [ ] 建立 Case 清洗与可信度打标流水线（去重、异常样本过滤、来源评级）。
-- [ ] 输出标准化 intelligence pack 并写入 `Official/Case Memory`，包含完整 lineage。
-
-### SAE（Strategic Admissions Evaluator）
-- [ ] 落地规则引擎（硬门槛、软条件、可配置权重）并接入 `strategy.rule_evaluate`。
-- [ ] 落地语义匹配模块并接入 `strategy.semantic_match`（项目契合度向量检索）。
-- [ ] 实现风险排序与 Reach/Match/Safety 分层策略。
-- [ ] 输出 gap actions 与优先级动作清单，写入 `Strategy Memory` 版本表。
-- [ ] 建立策略回归评估（采纳率、分层稳定性、风险校准误差）。
-
-### DTA（Dynamic Timeline Architect）
-- [ ] 对接学校级 deadline 解析，构建标准化 DDL 节点模型。
-- [ ] 实现 DAG 排期与约束求解，支持延期事件触发 `timeline.replan`。
-- [ ] 输出周级执行板、里程碑、风险标记与文书指令并版本化存储。
-- [ ] 接入风险策略（拥堵风险、材料缺口、官方信息未发布）自动标注。
-- [ ] 建立计划执行反馈闭环（完成率、逾期率、重排频次）。
-
-### CDS（Core Document Specialist）
-- [ ] 建立事实槽位同步机制（用户事实 + SAE + DTA 联合映射）。
-- [ ] 按学校/项目生成 SoP/PS/CV 草稿框架与版本矩阵。
-- [ ] 实现跨文档一致性检查（实体、时间线、量化数据一致）。
-- [ ] 接入高风险表述拦截与人审前置闸门。
-- [ ] 输出面试要点与 Q/A 包并挂接到文书版本。
-
-### 跨 Agent 公共任务（平台联动）
-- [x] 已完成 MCP 服务存根与 schema 注册初始化定义。
-- [x] 已完成统一错误码目录初始化定义。
-- [x] 已完成 `SessionMemoryStore/VersionedMemoryStore/ArtifactObjectStore` 内存适配器初始化定义。
-- [x] 已完成 namespace ACL、PII 脱敏、审计日志与审批工作流初始化定义。
-- [x] 已完成可观测性（trace/metrics）初始化定义。
-- [ ] 将内存适配器切换到 Redis/PostgreSQL/S3 生产实现。
-- [ ] 将治理能力接入策略中心、签名验真与审批通知。
-- [ ] 将 trace/metrics 接入 OpenTelemetry/Prometheus 与告警系统。
-
-## 9. 当前实现状态（截至当前版本）
-- 已完成公共区 `PlatformCommonBundle` 总装配入口，可一次性初始化 MCP、tools、memory、governance、observability。
-- 已完成 `tool registry <-> method catalog` 对齐校验，避免方法漂移。
-- 已完成 PAO 工作流状态机接入和任务状态枚举统一收敛。
-- 已具备分工开发基线：接口可调用、类型可检查、测试可回归。
-
-## 10. 验收基线（首版）
-- 所有 MCP 方法有可调用存根与契约校验。
-- 关键 memory namespace 支持写入、版本读取、审计追踪。
-- PAO 能跑通依赖门控、降级执行、状态流转。
-- 至少 1 条从 AIE 到 CDS 的端到端链路可回放。
+## 7. 模块（AIE/SAE/DTA/CDS）
+- PAO – Principal Application Orchestrator（主编排器）
+  - 定位：系统的中心协调层，负责把用户请求拆解成可执行任务并路由给各子 Agent，最终聚合输出。
+  - 职责：
+    - 意图识别（intent recognition）
+    - 任务拆解（task decomposition）
+    - Agent 路由（agent routing）
+    - 上下文管理（context management）
+    - 最终响应聚合（final response aggregation）
+  - 约束：所有 Agent 必须在共享 application context 下运行，PAO 确保复合请求被一致地处理与交付。
+  - 典型编排流：
+    - 用户提交自然语言请求
+    - PAO 识别意图并拆解任务
+    - AIE 提供招生事实、历史知识与案例证据
+    - SAE 评估匹配度并产出选校策略
+    - DTA 将策略转为逆向规划时间线
+    - CDS 基于上游结果生成文书支持
+    - PAO 聚合为一致的建议包
+- AIE – Admissions Intelligence Engine（招生情报引擎）
+  - 定位：系统的共享招生知识层，为下游决策与规划提供标准化的 admissions intelligence。
+  - 维护：
+    - Official Memory：来自大学官网、项目页、FAQ、DDL、历史要求快照等结构化信息
+    - Case Memory：清洗后的 offer 案例、时间规律、来源可信度标注
+  - 能力：检索当季招生信息、识别官方更新是否发布；当信息不完整时生成带置信度的预测；对外输出可复用的情报结构。
+- SAE – Strategic Admissions Evaluator（策略评估引擎）
+  - 定位：申请者-项目匹配与选校策略分析模块。
+  - 输入：用户背景（Profile）+ AIE 的招生情报。
+  - 输出：
+    - Reach / Match / Safety 分组
+    - 优劣势总结（strength–weakness summary）
+    - 差距分析（gap analysis）
+    - 风险感知的推荐顺序（risk-aware recommendation order）
+  - 方法：结构化规则 + 语义匹配 + 风险感知排序的混合评估框架，确保可实现与可解释。
+- DTA – Dynamic Timeline Architect（动态时间线规划模块）
+  - 定位：将策略推荐转化为可执行的时间计划与执行板。
+  - 输入：SAE 的优先级策略 + AIE 的时间信息 + PAO 管理的用户约束。
+  - 输出：
+    - 动态时间线/执行看板
+    - 周粒度任务结构（week-level task structure）
+    - 里程碑与风险标记（milestone and risk markers）
+    - 面向 CDS 的文书准备指令（document preparation instructions）
+  - 目标：把长期申请目标转化为可管理、可迭代、可适配的执行计划。
+- CDS – Core Document Specialist（核心文书支持模块）
+  - 定位：文书与面试相关的产出与改写支持，强调真实性与一致性。
+  - 输入：用户经历素材 + SAE 选校与定位结果 + DTA 的时间计划。
+  - 输出：
+    - 个性化 PS/SoP 草稿（customized PS / SoP drafts）
+    - 与策略动态对齐的 CV 内容（dynamically aligned CV content）
+    - 面试要点与话术（interview talking points）
+    - 叙事完整性反馈（narrative completion feedback）
+  - 设计：以人为中心的 refinement 模块，保留人工审阅与用户最终确认。

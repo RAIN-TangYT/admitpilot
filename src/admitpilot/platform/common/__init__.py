@@ -1,5 +1,5 @@
-"""平台公共模块。"""
+"""Common exports."""
 
-from admitpilot.platform.common.errors import ErrorCode, ErrorDescriptor, get_error_descriptor
+from admitpilot.platform.common.errors import ErrorCode, PlatformError
 
-__all__ = ["ErrorCode", "ErrorDescriptor", "get_error_descriptor"]
+__all__ = ["ErrorCode", "PlatformError"]

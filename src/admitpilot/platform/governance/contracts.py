@@ -1,4 +1,4 @@
-"""治理层协议与初始化定义。"""
+"""Governance hooks for policy validation and compatibility exports."""
 
 from __future__ import annotations
 
@@ -10,25 +10,25 @@ from admitpilot.platform.types import AgentRole
 
 
 class NamespaceAclManager(Protocol):
-    """Namespace 读写控制接口。"""
+    """Namespace read/write access control."""
 
     def can_read(self, agent: AgentRole, namespace: str) -> bool:
-        """校验读权限。"""
+        """Return whether the agent may read a namespace."""
 
     def can_write(self, agent: AgentRole, namespace: str) -> bool:
-        """校验写权限。"""
+        """Return whether the agent may write a namespace."""
 
 
 class PiiRedactor(Protocol):
-    """PII 脱敏接口。"""
+    """PII redaction hook."""
 
     def redact(self, payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
-        """返回脱敏后的负载与映射信息。"""
+        """Return redacted payload and the extracted PII map."""
 
 
 @dataclass(slots=True)
 class AuditEvent:
-    """审计事件定义。"""
+    """Audit event payload."""
 
     event_id: str
     trace_id: str
@@ -39,18 +39,18 @@ class AuditEvent:
 
 
 class AuditSink(Protocol):
-    """审计写入接口。"""
+    """Audit persistence hook."""
 
     def write(self, event: AuditEvent) -> str:
-        """写入事件并返回 event_id。"""
+        """Persist an audit event."""
 
     def list_by_trace(self, trace_id: str) -> list[AuditEvent]:
-        """按 trace 查询事件。"""
+        """List events by trace id."""
 
 
 @dataclass(slots=True)
 class ApprovalRequest:
-    """审批请求定义。"""
+    """Approval workflow request."""
 
     approval_id: str
     application_id: str
@@ -62,21 +62,21 @@ class ApprovalRequest:
 
 
 class ApprovalWorkflow(Protocol):
-    """审批流程接口。"""
+    """Approval workflow persistence."""
 
     def create(self, request: ApprovalRequest) -> str:
-        """创建审批请求。"""
+        """Create an approval request."""
 
     def resolve(self, approval_id: str, status: str, reviewer: str, comment: str = "") -> None:
-        """更新审批结果。"""
+        """Resolve an approval request."""
 
     def get(self, approval_id: str) -> ApprovalRequest | None:
-        """查询审批状态。"""
+        """Return an approval request."""
 
 
 @dataclass(slots=True)
 class InMemoryNamespaceAclManager:
-    """内存 ACL 管理器。"""
+    """In-memory ACL manager."""
 
     read_policies: dict[tuple[AgentRole, str], bool] = field(default_factory=dict)
     write_policies: dict[tuple[AgentRole, str], bool] = field(default_factory=dict)
@@ -90,7 +90,7 @@ class InMemoryNamespaceAclManager:
 
 @dataclass(slots=True)
 class SimplePiiRedactor:
-    """简单脱敏器（占位实现）。"""
+    """Simple in-memory redactor."""
 
     pii_keys: tuple[str, ...] = ("name", "email", "phone", "passport", "id_number")
 
@@ -108,7 +108,7 @@ class SimplePiiRedactor:
 
 @dataclass(slots=True)
 class InMemoryAuditSink:
-    """内存审计落地器。"""
+    """In-memory audit sink."""
 
     events: list[AuditEvent] = field(default_factory=list)
 
@@ -122,7 +122,7 @@ class InMemoryAuditSink:
 
 @dataclass(slots=True)
 class InMemoryApprovalWorkflow:
-    """内存审批流程。"""
+    """In-memory approval workflow."""
 
     requests: dict[str, ApprovalRequest] = field(default_factory=dict)
 
@@ -142,7 +142,7 @@ class InMemoryApprovalWorkflow:
 
 @dataclass(slots=True)
 class GovernanceSuite:
-    """治理初始化集合。"""
+    """Compatibility governance bundle expected by tests."""
 
     acl: NamespaceAclManager
     pii_redactor: PiiRedactor
@@ -189,3 +189,30 @@ def _apply_default_acl_policies(acl: InMemoryNamespaceAclManager) -> None:
     for agent, namespaces in write_matrix.items():
         for namespace in namespaces:
             acl.write_policies[(agent, namespace)] = True
+
+
+@dataclass(slots=True)
+class GovernanceEngine:
+    """Simple policy gate and audit trail used by the orchestrator runtime."""
+
+    blocked_terms: tuple[str, ...] = ("fabricate", "fake", "作弊", "伪造")
+    _audit: list[dict[str, Any]] = field(default_factory=list, repr=False)
+
+    def policy_validate(self, text: str) -> tuple[bool, str]:
+        lowered = text.lower()
+        for term in self.blocked_terms:
+            if term.lower() in lowered:
+                return False, f"policy_blocked:{term}"
+        return True, "ok"
+
+    def redact_pii(self, payload: dict[str, Any]) -> dict[str, Any]:
+        redacted, _ = SimplePiiRedactor().redact(payload)
+        return redacted
+
+    def audit(self, event: str, details: dict[str, Any]) -> None:
+        self._audit.append(
+            {"event": event, "details": details, "at": datetime.utcnow().isoformat()}
+        )
+
+    def audit_log(self) -> list[dict[str, Any]]:
+        return list(self._audit)

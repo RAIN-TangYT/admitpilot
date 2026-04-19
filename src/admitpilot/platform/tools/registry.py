@@ -1,16 +1,16 @@
-"""Tool Registry 骨架实现。"""
+"""Tool registry implementation."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import StrEnum
+from enum import Enum
 
 from admitpilot.platform.mcp.method_specs import METHOD_CATALOG, MethodContract
 from admitpilot.platform.types import AgentRole
 
 
-class ToolLayer(StrEnum):
-    """Tool 分层。"""
+class ToolLayer(str, Enum):
+    """Tool layering metadata."""
 
     L0_GOVERNANCE = "L0_GOVERNANCE"
     L1_ACQUISITION = "L1_ACQUISITION"
@@ -21,7 +21,7 @@ class ToolLayer(StrEnum):
 
 @dataclass(slots=True)
 class ToolDefinition:
-    """单个工具的注册信息。"""
+    """Single registered tool."""
 
     name: str
     layer: ToolLayer
@@ -35,7 +35,7 @@ class ToolDefinition:
 
 @dataclass(slots=True)
 class ToolRegistry:
-    """工具目录与权限检查入口。"""
+    """Tool registry and access control."""
 
     tools: dict[str, ToolDefinition] = field(default_factory=dict)
     method_index: dict[str, MethodContract] = field(default_factory=dict)
@@ -64,12 +64,6 @@ class ToolRegistry:
 
 
 def build_default_tool_registry() -> ToolRegistry:
-    """构建默认工具目录。
-
-    TODO:
-    1) 与 capability token 验证联动
-    2) 与 MCP method catalog 自动同步
-    """
     method_index = {item.method: item for item in METHOD_CATALOG}
     registry = ToolRegistry(method_index=method_index)
     registry.register(

@@ -1,14 +1,12 @@
-"""统一错误码目录。"""
+"""Shared platform error codes."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum
 
 
-class ErrorCode(StrEnum):
-    """系统统一错误码。"""
-
+class ErrorCode(str, Enum):
     AUTH_001 = "AUTH_001"
     AUTH_002 = "AUTH_002"
     AUTH_003 = "AUTH_003"
@@ -21,11 +19,16 @@ class ErrorCode(StrEnum):
     SYS_001 = "SYS_001"
     SYS_002 = "SYS_002"
     SYS_003 = "SYS_003"
+    AGENT_NOT_REGISTERED = "AGENT_NOT_REGISTERED"
+    DEPENDENCY_BLOCKED = "DEPENDENCY_BLOCKED"
+    CAPABILITY_DENIED = "CAPABILITY_DENIED"
+    POLICY_BLOCKED = "POLICY_BLOCKED"
+    RUNTIME_FAILURE = "RUNTIME_FAILURE"
 
 
 @dataclass(frozen=True, slots=True)
 class ErrorDescriptor:
-    """错误描述定义。"""
+    """Metadata for a well-known platform error code."""
 
     code: ErrorCode
     category: str
@@ -110,6 +113,25 @@ _ERROR_DESCRIPTORS: dict[ErrorCode, ErrorDescriptor] = {
 
 
 def get_error_descriptor(code: ErrorCode) -> ErrorDescriptor:
-    """获取错误码描述。"""
+    """Return a known error descriptor or synthesize a generic one."""
 
-    return _ERROR_DESCRIPTORS[code]
+    descriptor = _ERROR_DESCRIPTORS.get(code)
+    if descriptor is not None:
+        return descriptor
+    return ErrorDescriptor(
+        code=code,
+        category="platform",
+        retryable=False,
+        default_message=code.value,
+    )
+
+
+@dataclass(slots=True)
+class PlatformError(Exception):
+    """Typed platform error with code."""
+
+    code: ErrorCode
+    message: str
+
+    def __str__(self) -> str:
+        return f"{self.code.value}: {self.message}"

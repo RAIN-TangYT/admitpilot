@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+
 from typing import Any
 
+from admitpilot.agents.cds.prompts import SYSTEM_PROMPT
 from admitpilot.agents.cds.schemas import (
     ConsistencyIssue,
     DocumentDraft,
@@ -12,10 +15,14 @@ from admitpilot.agents.cds.schemas import (
     NarrativeFactSlot,
 )
 from admitpilot.core.schemas import DTAAgentOutput, SAEAgentOutput
+from admitpilot.platform.llm.qwen import QwenClient
 
 
 class CoreDocumentService:
     """负责文书叙事与面试素材生成。"""
+
+    def __init__(self, llm_client: QwenClient | None = None) -> None:
+        self.llm_client = llm_client or QwenClient()
 
     def build_support_pack(
         self, strategy: SAEAgentOutput, timeline: DTAAgentOutput
@@ -29,8 +36,15 @@ class CoreDocumentService:
         interview_cues = self._build_interview_cues(
             recommendations=recommendations, timeline=timeline
         )
+        drafts, interview_cues = self._llm_refine_support_pack(
+            strategy=strategy,
+            timeline=timeline,
+            drafts=drafts,
+            interview_cues=interview_cues,
+        )
         issues = self._check_cross_document_consistency(drafts=drafts)
         checklist = self._build_review_checklist(issues=issues)
+        checklist = self._llm_refine_checklist(issues=issues, checklist=checklist)
         return DocumentSupportPack(
             drafts=drafts,
             interview_cues=interview_cues,
@@ -154,3 +168,122 @@ class CoreDocumentService:
         if issues:
             checklist.insert(0, "优先解决一致性告警后再进入下一轮润色")
         return checklist
+
+    def _llm_refine_support_pack(
+        self,
+        strategy: SAEAgentOutput,
+        timeline: DTAAgentOutput,
+        drafts: list[DocumentDraft],
+        interview_cues: list[InterviewCue],
+    ) -> tuple[list[DocumentDraft], list[InterviewCue]]:
+        if not self.llm_client.enabled:
+            return drafts, interview_cues
+        payload = {
+            "ranking_order": strategy.get("ranking_order", []),
+            "strengths": strategy.get("strengths", []),
+            "weaknesses": strategy.get("weaknesses", []),
+            "gap_actions": strategy.get("gap_actions", []),
+            "document_instructions": timeline.get("document_instructions", []),
+            "drafts": [
+                {
+                    "document_type": item.document_type,
+                    "target_school": item.target_school,
+                    "content_outline": item.content_outline,
+                    "risks": item.risks,
+                }
+                for item in drafts
+            ],
+            "interview_cues": [
+                {"question": item.question, "cue": item.cue} for item in interview_cues
+            ],
+        }
+        prompt = "\n".join(
+            [
+                "请基于输入输出 JSON。",
+                (
+                    '返回格式：{"drafts":[{"document_type":"sop","target_school":"NUS","content_outline":["..."],"risks":["..."]}],'
+                    '"interview_cues":[{"question":"...","cue":"..."}]}'
+                ),
+                "不要输出 markdown。",
+                json.dumps(payload, ensure_ascii=False, default=str),
+            ]
+        )
+        try:
+            result = self.llm_client.chat_json(
+                system_prompt=SYSTEM_PROMPT,
+                user_prompt=prompt,
+                temperature=0,
+            )
+        except RuntimeError:
+            return drafts, interview_cues
+        llm_drafts = result.get("drafts", [])
+        if isinstance(llm_drafts, list):
+            draft_lookup = {(item.document_type, item.target_school): item for item in drafts}
+            for raw in llm_drafts:
+                if not isinstance(raw, dict):
+                    continue
+                key = (str(raw.get("document_type", "")).strip(), str(raw.get("target_school", "")).strip())
+                if key not in draft_lookup:
+                    continue
+                draft = draft_lookup[key]
+                outlines = raw.get("content_outline")
+                risks = raw.get("risks")
+                if isinstance(outlines, list):
+                    normalized_outlines = [text for item in outlines if (text := str(item).strip())]
+                    if normalized_outlines:
+                        draft.content_outline = normalized_outlines
+                if isinstance(risks, list):
+                    normalized_risks = [text for item in risks if (text := str(item).strip())]
+                    if normalized_risks:
+                        draft.risks = normalized_risks
+        llm_cues = result.get("interview_cues", [])
+        if isinstance(llm_cues, list):
+            normalized_cues: list[InterviewCue] = []
+            for raw in llm_cues:
+                if not isinstance(raw, dict):
+                    continue
+                question = str(raw.get("question", "")).strip()
+                cue = str(raw.get("cue", "")).strip()
+                if question and cue:
+                    normalized_cues.append(InterviewCue(question=question, cue=cue))
+            if normalized_cues:
+                interview_cues = normalized_cues
+        return drafts, interview_cues
+
+    def _llm_refine_checklist(
+        self, issues: list[ConsistencyIssue], checklist: list[str]
+    ) -> list[str]:
+        if not self.llm_client.enabled:
+            return checklist
+        payload = {
+            "issues": [
+                {
+                    "severity": item.severity,
+                    "message": item.message,
+                    "impacted_documents": item.impacted_documents,
+                }
+                for item in issues
+            ],
+            "checklist": checklist,
+        }
+        prompt = "\n".join(
+            [
+                "请基于输入输出 JSON。",
+                '返回格式：{"review_checklist":["..."]}',
+                "不要输出 markdown。",
+                json.dumps(payload, ensure_ascii=False, default=str),
+            ]
+        )
+        try:
+            result = self.llm_client.chat_json(
+                system_prompt=SYSTEM_PROMPT,
+                user_prompt=prompt,
+                temperature=0,
+            )
+        except RuntimeError:
+            return checklist
+        llm_checklist = result.get("review_checklist", [])
+        if not isinstance(llm_checklist, list):
+            return checklist
+        normalized = [text for item in llm_checklist if (text := str(item).strip())]
+        return normalized or checklist

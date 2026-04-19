@@ -1,4 +1,4 @@
-"""MCP 服务存根初始化定义。"""
+"""MCP server registry."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from admitpilot.platform.mcp.schemas import (
 
 @dataclass(slots=True)
 class MCPMethodStub:
-    """单个 MCP 方法存根。"""
+    """Single MCP method stub."""
 
     server: str
     method: str
@@ -23,7 +23,7 @@ class MCPMethodStub:
 
 @dataclass(slots=True)
 class MCPServerStub:
-    """单个 MCP Server 存根。"""
+    """Single MCP server stub."""
 
     name: str
     methods: dict[str, MCPMethodStub] = field(default_factory=dict)
@@ -34,7 +34,7 @@ class MCPServerStub:
 
 @dataclass(slots=True)
 class MCPServerRegistry:
-    """MCP 服务注册中心。"""
+    """MCP server registry."""
 
     schema_registry: MethodSchemaRegistry
     servers: dict[str, MCPServerStub] = field(default_factory=dict)
@@ -44,7 +44,7 @@ class MCPServerRegistry:
         if server is None:
             server = MCPServerStub(name=method_stub.server)
             self.servers[method_stub.server] = server
-        server.register_method(method_stub=method_stub)
+        server.register_method(method_stub)
 
     def get_server(self, name: str) -> MCPServerStub | None:
         return self.servers.get(name)
@@ -53,8 +53,6 @@ class MCPServerRegistry:
 def build_default_mcp_server_registry(
     schema_registry: MethodSchemaRegistry | None = None,
 ) -> MCPServerRegistry:
-    """基于 method catalog 构建默认 MCP 服务存根。"""
-
     effective_schema_registry = schema_registry or build_default_method_schema_registry()
     registry = MCPServerRegistry(schema_registry=effective_schema_registry)
     for contract in METHOD_CATALOG:
