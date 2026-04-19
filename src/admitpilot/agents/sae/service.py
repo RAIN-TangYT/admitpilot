@@ -7,28 +7,38 @@ import json
 from admitpilot.agents.sae.prompts import SYSTEM_PROMPT
 from admitpilot.agents.sae.schemas import ProgramRecommendation, StrategicReport
 from admitpilot.core.schemas import AIEAgentOutput, UserProfile
+from admitpilot.domain.catalog import DEFAULT_ADMISSIONS_CATALOG, AdmissionsCatalog
 from admitpilot.platform.llm.openai import OpenAIClient
 
 
 class StrategicAdmissionsService:
     """负责候选项目评估与风险排序。"""
 
-    SUPPORTED_SCHOOLS = ("NUS", "NTU", "HKU", "CUHK", "HKUST")
+    SUPPORTED_SCHOOLS = DEFAULT_ADMISSIONS_CATALOG.all_school_codes()
     MODEL_BREAKDOWN = {"rule": 0.45, "semantic": 0.35, "risk": 0.20}
 
-    def __init__(self, llm_client: OpenAIClient | None = None) -> None:
+    def __init__(
+        self,
+        llm_client: OpenAIClient | None = None,
+        catalog: AdmissionsCatalog = DEFAULT_ADMISSIONS_CATALOG,
+    ) -> None:
         self.llm_client = llm_client or OpenAIClient()
+        self.catalog = catalog
 
     def evaluate(self, user_profile: UserProfile, intelligence: AIEAgentOutput) -> StrategicReport:
         """输出分层推荐、优劣势和差距分析。"""
         target_schools = self._resolve_target_schools(
             intelligence=intelligence, user_profile=user_profile
         )
-        target_program = intelligence.get("target_program", user_profile.major_interest or "MSCS")
+        target_program_by_school = self._resolve_target_programs_by_school(
+            intelligence=intelligence,
+            user_profile=user_profile,
+            target_schools=target_schools,
+        )
         recommendations = [
             self._build_recommendation(
                 school=school,
-                target_program=target_program,
+                target_program=target_program_by_school[school],
                 user_profile=user_profile,
                 intelligence=intelligence,
             )
@@ -73,8 +83,46 @@ class StrategicAdmissionsService:
         schools = intelligence.get("target_schools", [])
         if not schools:
             schools = user_profile.target_schools
-        normalized = [item.upper() for item in schools if item.upper() in self.SUPPORTED_SCHOOLS]
-        return normalized or list(self.SUPPORTED_SCHOOLS)
+        return self.catalog.normalize_school_scope(schools)
+
+    def _resolve_target_programs_by_school(
+        self,
+        intelligence: AIEAgentOutput,
+        user_profile: UserProfile,
+        target_schools: list[str],
+    ) -> dict[str, str]:
+        portfolio = self.catalog.default_program_portfolio(target_schools)
+        explicit_mapping = intelligence.get("target_program_by_school", {})
+        if isinstance(explicit_mapping, dict):
+            for raw_school, raw_program in explicit_mapping.items():
+                school = self.catalog.normalize_school_code(str(raw_school))
+                program = self.catalog.normalize_program_code(str(raw_program))
+                if school is None or program is None:
+                    continue
+                if school in target_schools and self.catalog.is_supported_program(school, program):
+                    portfolio[school] = program
+        explicit_program = intelligence.get("target_program", "")
+        normalized_explicit = self.catalog.normalize_program_code(str(explicit_program))
+        if normalized_explicit is not None:
+            for school in target_schools:
+                if self.catalog.is_supported_program(school, normalized_explicit):
+                    portfolio[school] = normalized_explicit
+        profile_programs = [
+            normalized
+            for item in user_profile.target_programs
+            if (normalized := self.catalog.normalize_program_code(item)) is not None
+        ]
+        for school in target_schools:
+            if school in portfolio:
+                continue
+            for program in profile_programs:
+                if self.catalog.is_supported_program(school, program):
+                    portfolio[school] = program
+                    break
+        return {
+            school: portfolio.get(school) or self.catalog.supported_programs(school)[0]
+            for school in target_schools
+        }
 
     def _build_recommendation(
         self,

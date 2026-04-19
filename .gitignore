@@ -34,6 +34,7 @@ pip-wheel-metadata/
 
 # Logs
 *.log
+tmp/
 
 .idea/
 !.idea/.gitignore

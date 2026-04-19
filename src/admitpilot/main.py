@@ -5,6 +5,7 @@ from __future__ import annotations
 from admitpilot.app import build_application
 from admitpilot.config import load_settings
 from admitpilot.core.schemas import UserProfile
+from admitpilot.domain.catalog import DEFAULT_ADMISSIONS_CATALOG
 from admitpilot.pao.contracts import OrchestrationRequest
 
 
@@ -13,21 +14,24 @@ def main() -> None:
     settings = load_settings()
     application = build_application(settings=settings)
     orchestrator = application.orchestrator
+    default_portfolio = DEFAULT_ADMISSIONS_CATALOG.default_program_portfolio(
+        ["NUS", "NTU", "HKU", "CUHK", "HKUST"]
+    )
     request = OrchestrationRequest(
         user_query=f"我需要完成{settings.default_cycle}申请季的选校、时间规划和文书准备",
         profile=UserProfile(
             name="Demo Applicant",
             degree_level="Master",
-            major_interest="Computer Science",
+            major_interest="Computing",
             target_regions=["Singapore", "Hong Kong"],
             target_schools=["NUS", "NTU", "HKU", "CUHK", "HKUST"],
-            target_programs=["MSCS"],
+            target_programs=list(dict.fromkeys(default_portfolio.values())),
         ),
         constraints={
             "timezone": settings.timezone,
             "cycle": settings.default_cycle,
             "target_schools": ["NUS", "NTU", "HKU", "CUHK", "HKUST"],
-            "target_program": "MSCS",
+            "target_program_by_school": default_portfolio,
         },
     )
     response = orchestrator.invoke(request)

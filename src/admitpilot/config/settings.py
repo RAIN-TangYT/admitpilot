@@ -47,6 +47,7 @@ class AdmitPilotSettings:
     object_store_bucket: str = "admitpilot-artifacts"
     object_store_access_key: str = ""
     object_store_secret_key: str = ""
+    official_library_path: str = "data/official_library/official_library.json"
     api_host: str = "127.0.0.1"
     api_port: int = 8000
 
@@ -105,6 +106,12 @@ def load_settings(
         ),
         object_store_access_key=str(values.get("ADMITPILOT_OBJECT_STORE_ACCESS_KEY", "")),
         object_store_secret_key=str(values.get("ADMITPILOT_OBJECT_STORE_SECRET_KEY", "")),
+        official_library_path=str(
+            values.get(
+                "ADMITPILOT_OFFICIAL_LIBRARY_PATH",
+                "data/official_library/official_library.json",
+            )
+        ),
         api_host=str(values.get("ADMITPILOT_API_HOST", "127.0.0.1")),
         api_port=_coerce_int(values.get("ADMITPILOT_API_PORT"), 8000),
     )
