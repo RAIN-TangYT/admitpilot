@@ -1,13 +1,23 @@
 from admitpilot.agents.sae.service import StrategicAdmissionsService
-from admitpilot.core.schemas import UserProfile
+from admitpilot.core.schemas import AIEAgentOutput, UserProfile
 
 
-def _build_intelligence() -> dict[str, object]:
+def _build_intelligence() -> AIEAgentOutput:
     return {
+        "cycle": "2026",
+        "as_of_date": "2026-04-19",
         "target_schools": ["HKUST"],
         "target_program": "MSCS",
         "official_status_by_school": {"HKUST": "official_found"},
+        "official_records": [],
+        "case_records": [],
+        "case_patterns": [],
         "forecast_signals": [],
+        "evidence_levels": {"HKUST": "official_primary"},
+        "official_confidence": 0.88,
+        "case_confidence": 0.0,
+        "cache_hit_count": 0,
+        "prediction_used": False,
     }
 
 

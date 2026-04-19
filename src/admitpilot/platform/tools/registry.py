@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 from admitpilot.platform.mcp.method_specs import METHOD_CATALOG, MethodContract
 from admitpilot.platform.types import AgentRole
 
 
-class ToolLayer(str, Enum):
+class ToolLayer(StrEnum):
     """Tool layering metadata."""
 
     L0_GOVERNANCE = "L0_GOVERNANCE"

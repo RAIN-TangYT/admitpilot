@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from admitpilot.config import AdmitPilotSettings, load_settings
 from admitpilot.platform.common import ErrorCode
 from admitpilot.platform.governance import GovernanceSuite, build_default_governance_suite
 from admitpilot.platform.governance.contracts import GovernanceEngine
@@ -23,6 +24,7 @@ from admitpilot.platform.tools import ToolRegistry, build_default_tool_registry
 class PlatformCommonBundle:
     """Shared platform bundle used by tests and orchestrator runtime."""
 
+    settings: AdmitPilotSettings
     method_schemas: MethodSchemaRegistry
     mcp_servers: MCPServerRegistry
     tool_registry: ToolRegistry
@@ -51,9 +53,13 @@ class PlatformCommonBundle:
         return self.memory_adapters.artifact_store
 
 
-def build_default_platform_common_bundle() -> PlatformCommonBundle:
+def build_default_platform_common_bundle(
+    settings: AdmitPilotSettings | None = None,
+) -> PlatformCommonBundle:
+    effective_settings = settings or load_settings()
     method_schemas = build_default_method_schema_registry()
     return PlatformCommonBundle(
+        settings=effective_settings,
         method_schemas=method_schemas,
         mcp_servers=build_default_mcp_server_registry(schema_registry=method_schemas),
         tool_registry=build_default_tool_registry(),

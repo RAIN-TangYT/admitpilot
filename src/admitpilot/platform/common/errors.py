@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 
-class ErrorCode(str, Enum):
+class ErrorCode(StrEnum):
     AUTH_001 = "AUTH_001"
     AUTH_002 = "AUTH_002"
     AUTH_003 = "AUTH_003"

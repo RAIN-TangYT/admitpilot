@@ -1,5 +1,6 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 
+from admitpilot.platform.common.time import utc_now
 from admitpilot.platform.mcp import METHOD_CATALOG
 from admitpilot.platform.memory.contracts import MemoryNamespace, default_memory_topology
 from admitpilot.platform.runtime import RuntimeStateMachine, WorkflowStatus
@@ -29,7 +30,7 @@ def test_runtime_state_machine_transition_rules() -> None:
 
 
 def test_capability_validator_checks_expiration_and_method() -> None:
-    now = datetime.utcnow()
+    now = utc_now()
     token = CapabilityToken(
         token_id="t1",
         subject="aie",

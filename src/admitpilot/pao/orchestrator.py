@@ -3,13 +3,44 @@
 from __future__ import annotations
 
 import traceback
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Callable, cast
+from typing import Any, cast
 from uuid import uuid4
 
+from admitpilot.agents.aie.agent import AIEAgent
+from admitpilot.agents.aie.service import AdmissionsIntelligenceService
+from admitpilot.agents.base import BaseAgent
+from admitpilot.agents.cds.agent import CDSAgent
+from admitpilot.agents.cds.service import CoreDocumentService
+from admitpilot.agents.dta.agent import DTAAgent
+from admitpilot.agents.dta.service import DynamicTimelineService
+from admitpilot.agents.sae.agent import SAEAgent
+from admitpilot.agents.sae.service import StrategicAdmissionsService
+from admitpilot.config import AdmitPilotSettings, load_settings
+from admitpilot.core.schemas import (
+    AgentResult,
+    AgentTask,
+    AIEAgentOutput,
+    ApplicationContext,
+    CDSAgentOutput,
+    DTAAgentOutput,
+    SAEAgentOutput,
+    SharedMemory,
+)
+from admitpilot.pao.contracts import OrchestrationRequest, OrchestrationResponse
+from admitpilot.pao.router import IntentRouter
+from admitpilot.pao.schemas import PaoGraphState, RoutePlan
+from admitpilot.platform import PlatformCommonBundle, build_default_platform_common_bundle
+from admitpilot.platform.llm.openai import OpenAIClient
+from admitpilot.platform.runtime import RuntimeStateMachine, TaskStatus, WorkflowStatus
+
+ImportedStateGraph: Any = None
+
 try:
-    from langgraph.graph import END, START, StateGraph
+    from langgraph.graph import END, START
+    from langgraph.graph import StateGraph as _ImportedStateGraph
 except ModuleNotFoundError:
     START = "__start__"
     END = "__end__"
@@ -37,7 +68,7 @@ except ModuleNotFoundError:
                     current = self._edges[current]
             return current_state
 
-    class StateGraph:
+    class FallbackStateGraph:
         def __init__(self, _state_type: Any) -> None:
             self._nodes: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {}
             self._edges: dict[str, str] = {}
@@ -62,32 +93,14 @@ except ModuleNotFoundError:
 
         def compile(self) -> _CompiledStateGraph:
             return _CompiledStateGraph(self._nodes, self._edges, self._conditional_edges)
+else:
+    ImportedStateGraph = _ImportedStateGraph
 
-from admitpilot.agents.aie.agent import AIEAgent
-from admitpilot.agents.aie.service import AdmissionsIntelligenceService
-from admitpilot.agents.base import BaseAgent
-from admitpilot.agents.cds.agent import CDSAgent
-from admitpilot.agents.cds.service import CoreDocumentService
-from admitpilot.agents.dta.agent import DTAAgent
-from admitpilot.agents.dta.service import DynamicTimelineService
-from admitpilot.agents.sae.agent import SAEAgent
-from admitpilot.agents.sae.service import StrategicAdmissionsService
-from admitpilot.core.schemas import (
-    AIEAgentOutput,
-    AgentResult,
-    AgentTask,
-    ApplicationContext,
-    CDSAgentOutput,
-    DTAAgentOutput,
-    SAEAgentOutput,
-    SharedMemory,
-)
-from admitpilot.pao.contracts import OrchestrationRequest, OrchestrationResponse
-from admitpilot.pao.router import IntentRouter
-from admitpilot.pao.schemas import PaoGraphState, RoutePlan
-from admitpilot.platform import PlatformCommonBundle, build_default_platform_common_bundle
-from admitpilot.platform.llm.qwen import QwenClient
-from admitpilot.platform.runtime import RuntimeStateMachine, TaskStatus, WorkflowStatus
+
+def _new_state_graph(state_type: Any) -> Any:
+    if ImportedStateGraph is not None:
+        return ImportedStateGraph(state_type)
+    return FallbackStateGraph(state_type)
 
 
 @dataclass(slots=True)
@@ -97,19 +110,22 @@ class PrincipalApplicationOrchestrator:
     router: IntentRouter = field(default_factory=IntentRouter)
     agents: dict[str, BaseAgent] = field(default_factory=dict)
     platform_bundle: PlatformCommonBundle | None = None
+    settings: AdmitPilotSettings | None = None
     _graph: Any = field(init=False, repr=False)
     _workflow_state_machine: RuntimeStateMachine = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
+        if self.settings is None:
+            self.settings = load_settings()
         if not self.agents:
-            self.agents = self._build_default_agents()
+            self.agents = self._build_default_agents(self.settings)
         if self.platform_bundle is None:
-            self.platform_bundle = build_default_platform_common_bundle()
+            self.platform_bundle = build_default_platform_common_bundle(settings=self.settings)
         self._workflow_state_machine = RuntimeStateMachine()
         self._graph = self._build_graph()
 
-    def _build_default_agents(self) -> dict[str, BaseAgent]:
-        llm_client = QwenClient()
+    def _build_default_agents(self, settings: AdmitPilotSettings) -> dict[str, BaseAgent]:
+        llm_client = OpenAIClient(settings=settings)
         return {
             "aie": AIEAgent(service=AdmissionsIntelligenceService(llm_client=llm_client)),
             "sae": SAEAgent(service=StrategicAdmissionsService(llm_client=llm_client)),
@@ -118,7 +134,7 @@ class PrincipalApplicationOrchestrator:
         }
 
     def _build_graph(self) -> Any:
-        graph = StateGraph(PaoGraphState)
+        graph = _new_state_graph(PaoGraphState)
         graph.add_node("intake", self._intake_node)
         graph.add_node("route", self._route_node)
         graph.add_node("dispatch", self._dispatch_node)
@@ -208,7 +224,11 @@ class PrincipalApplicationOrchestrator:
                 current=workflow_status,
                 target=WorkflowStatus.EXECUTING,
             )
-        blockers = self._resolve_blockers(task=task, context=context, prior_results=state["results"])
+        blockers = self._resolve_blockers(
+            task=task,
+            context=context,
+            prior_results=state["results"],
+        )
         if blockers and task.can_degrade:
             degraded = context.decisions.setdefault("degraded_tasks", {})
             degraded[task.name] = blockers
@@ -407,7 +427,7 @@ class PrincipalApplicationOrchestrator:
             profile=context.profile,
             constraints=dict(context.constraints),
             shared_memory=cast(SharedMemory, deepcopy(dict(context.shared_memory))),
-            decisions=cast(dict[str, Any], deepcopy(dict(context.decisions))),
+            decisions=deepcopy(dict(context.decisions)),
         )
 
     def _resolve_blockers(
@@ -493,7 +513,7 @@ class PrincipalApplicationOrchestrator:
         self.platform_bundle.session_memory.put(
             namespace=namespace,
             key=key,
-            value=cast(dict[str, Any], result.output),
+            value=result.output,
             source=result.agent,
             confidence=result.confidence,
             evidence_level=result.evidence_level,
@@ -502,7 +522,7 @@ class PrincipalApplicationOrchestrator:
         self.platform_bundle.versioned_memory.append(
             namespace=namespace,
             key=key,
-            value=cast(dict[str, Any], result.output),
+            value=result.output,
             source=result.agent,
             confidence=result.confidence,
             evidence_level=result.evidence_level,
@@ -512,7 +532,7 @@ class PrincipalApplicationOrchestrator:
             self.platform_bundle.artifact_store.put(
                 namespace=namespace,
                 object_id=f"{result.task}:{len(lineage)}",
-                payload=cast(dict[str, Any], result.output),
+                payload=result.output,
             )
         self.platform_bundle.governance_engine.audit(
             event="memory_write",

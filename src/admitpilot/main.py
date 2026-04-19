@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+from admitpilot.app import build_application
+from admitpilot.config import load_settings
 from admitpilot.core.schemas import UserProfile
 from admitpilot.pao.contracts import OrchestrationRequest
-from admitpilot.pao.orchestrator import PrincipalApplicationOrchestrator
 
 
 def main() -> None:
     """运行一次端到端编排示例。"""
-    orchestrator = PrincipalApplicationOrchestrator()
+    settings = load_settings()
+    application = build_application(settings=settings)
+    orchestrator = application.orchestrator
     request = OrchestrationRequest(
-        user_query="我需要完成2026申请季的选校、时间规划和文书准备",
+        user_query=f"我需要完成{settings.default_cycle}申请季的选校、时间规划和文书准备",
         profile=UserProfile(
             name="Demo Applicant",
             degree_level="Master",
@@ -21,8 +24,8 @@ def main() -> None:
             target_programs=["MSCS"],
         ),
         constraints={
-            "timezone": "Asia/Shanghai",
-            "cycle": "2026",
+            "timezone": settings.timezone,
+            "cycle": settings.default_cycle,
             "target_schools": ["NUS", "NTU", "HKU", "CUHK", "HKUST"],
             "target_program": "MSCS",
         },

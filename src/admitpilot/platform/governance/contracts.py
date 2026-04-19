@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol
 
+from admitpilot.platform.common.time import to_iso_utc, utc_now
 from admitpilot.platform.types import AgentRole
 
 
@@ -35,7 +36,7 @@ class AuditEvent:
     event_type: str
     actor: str
     payload: dict[str, Any]
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=utc_now)
 
 
 class AuditSink(Protocol):
@@ -211,7 +212,7 @@ class GovernanceEngine:
 
     def audit(self, event: str, details: dict[str, Any]) -> None:
         self._audit.append(
-            {"event": event, "details": details, "at": datetime.utcnow().isoformat()}
+            {"event": event, "details": details, "at": to_iso_utc()}
         )
 
     def audit_log(self) -> list[dict[str, Any]]:

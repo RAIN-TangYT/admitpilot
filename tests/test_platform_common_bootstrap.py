@@ -1,7 +1,6 @@
-from datetime import datetime
-
 from admitpilot.platform import build_default_platform_common_bundle
 from admitpilot.platform.common import ErrorCode
+from admitpilot.platform.common.time import utc_now
 from admitpilot.platform.governance import build_default_governance_suite
 from admitpilot.platform.mcp import (
     build_default_mcp_server_registry,
@@ -45,7 +44,7 @@ def test_memory_adapter_bundle_supports_session_and_versioned_records() -> None:
         version_id="v1",
         as_of_date="2026-01-01",
         payload={"ranking": ["NUS", "NTU"]},
-        created_at=datetime.utcnow(),
+        created_at=utc_now(),
     )
     version_id = bundle.versioned_store.upsert(record)
     latest = bundle.versioned_store.get_latest(

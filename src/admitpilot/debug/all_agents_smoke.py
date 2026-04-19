@@ -10,12 +10,21 @@ from admitpilot.agents.dta.agent import DTAAgent
 from admitpilot.agents.dta.service import DynamicTimelineService
 from admitpilot.agents.sae.agent import SAEAgent
 from admitpilot.agents.sae.service import StrategicAdmissionsService
-from admitpilot.core.schemas import AgentTask, ApplicationContext, SharedMemory, UserProfile
-from admitpilot.platform.llm.qwen import QwenClient
+from admitpilot.core.schemas import (
+    AgentTask,
+    AIEAgentOutput,
+    ApplicationContext,
+    CDSAgentOutput,
+    DTAAgentOutput,
+    SAEAgentOutput,
+    SharedMemory,
+    UserProfile,
+)
+from admitpilot.platform.llm.openai import OpenAIClient
 
 
 def main() -> None:
-    llm_client = QwenClient()
+    llm_client = OpenAIClient()
     context = ApplicationContext(
         user_query="帮我规划 2026 Fall 的港新计算机硕士申请方案",
         profile=UserProfile(
@@ -74,10 +83,23 @@ def main() -> None:
     ]
     for memory_key, agent, task in pipeline:
         result = agent.run(task=task, context=context)
-        context.shared_memory[memory_key] = result.output
+        _write_shared_memory(context=context, memory_key=memory_key, output=result.output)
         print(f"{memory_key}: success={result.success} confidence={result.confidence:.2f}")
         print(str(result.output)[:600])
         print("---")
+
+
+def _write_shared_memory(
+    context: ApplicationContext, memory_key: str, output: dict[str, object]
+) -> None:
+    if memory_key == "aie":
+        context.shared_memory["aie"] = cast(AIEAgentOutput, output)
+    elif memory_key == "sae":
+        context.shared_memory["sae"] = cast(SAEAgentOutput, output)
+    elif memory_key == "dta":
+        context.shared_memory["dta"] = cast(DTAAgentOutput, output)
+    elif memory_key == "cds":
+        context.shared_memory["cds"] = cast(CDSAgentOutput, output)
 
 
 if __name__ == "__main__":

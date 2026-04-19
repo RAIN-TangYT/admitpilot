@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
+from admitpilot.platform.common.time import ensure_utc, utc_now
 
-class MemoryNamespace(str, Enum):
+
+class MemoryNamespace(StrEnum):
     """Well-known memory namespaces."""
 
     SESSION = "session"
@@ -34,7 +36,7 @@ class VersionedRecord:
     as_of_date: str
     payload: dict[str, Any]
     lineage: list[dict[str, Any]] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=utc_now)
 
 
 @dataclass(slots=True)
@@ -49,13 +51,13 @@ class MemoryRecord:
     confidence: float = 0.0
     evidence_level: str = "unknown"
     lineage: list[str] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=utc_now)
     expires_at: datetime | None = None
 
     def is_expired(self, now: datetime | None = None) -> bool:
         if self.expires_at is None:
             return False
-        return (now or datetime.utcnow()) >= self.expires_at
+        return ensure_utc(now or utc_now()) >= ensure_utc(self.expires_at)
 
 
 @dataclass(slots=True)
@@ -88,4 +90,4 @@ def default_memory_topology() -> MemoryTopology:
 def default_expiry(hours: int = 24) -> datetime:
     """Build a default expiration timestamp."""
 
-    return datetime.utcnow() + timedelta(hours=hours)
+    return utc_now() + timedelta(hours=hours)

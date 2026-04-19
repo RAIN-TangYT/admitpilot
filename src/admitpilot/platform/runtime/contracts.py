@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     """Task execution status."""
 
     PENDING = "PENDING"
@@ -19,7 +19,7 @@ class TaskStatus(str, Enum):
     DEGRADED = "DEGRADED"
 
 
-class WorkflowStatus(str, Enum):
+class WorkflowStatus(StrEnum):
     """Workflow execution status."""
 
     NEW = "NEW"
@@ -54,12 +54,14 @@ class AgentResult:
     success: bool
     output: dict[str, Any] = field(default_factory=dict)
     confidence: float = 0.0
-    status: TaskStatus | None = None
+    status: TaskStatus = TaskStatus.SUCCESS
     evidence_level: str = "unknown"
     lineage: list[str] = field(default_factory=list)
     trace: list[str] = field(default_factory=list)
     blocked_by: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
-        if self.status is None:
-            self.status = TaskStatus.SUCCESS if self.success else TaskStatus.FAILED
+        if self.success and self.status == TaskStatus.SUCCESS:
+            return
+        if not self.success and self.status == TaskStatus.SUCCESS:
+            self.status = TaskStatus.FAILED

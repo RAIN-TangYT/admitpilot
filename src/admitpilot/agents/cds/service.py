@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-
 from typing import Any
 
 from admitpilot.agents.cds.prompts import SYSTEM_PROMPT
@@ -15,14 +14,14 @@ from admitpilot.agents.cds.schemas import (
     NarrativeFactSlot,
 )
 from admitpilot.core.schemas import DTAAgentOutput, SAEAgentOutput
-from admitpilot.platform.llm.qwen import QwenClient
+from admitpilot.platform.llm.openai import OpenAIClient
 
 
 class CoreDocumentService:
     """负责文书叙事与面试素材生成。"""
 
-    def __init__(self, llm_client: QwenClient | None = None) -> None:
-        self.llm_client = llm_client or QwenClient()
+    def __init__(self, llm_client: OpenAIClient | None = None) -> None:
+        self.llm_client = llm_client or OpenAIClient()
 
     def build_support_pack(
         self, strategy: SAEAgentOutput, timeline: DTAAgentOutput
@@ -263,7 +262,10 @@ class CoreDocumentService:
             for raw in llm_drafts:
                 if not isinstance(raw, dict):
                     continue
-                key = (str(raw.get("document_type", "")).strip(), str(raw.get("target_school", "")).strip())
+                key = (
+                    str(raw.get("document_type", "")).strip(),
+                    str(raw.get("target_school", "")).strip(),
+                )
                 if key not in draft_lookup:
                     continue
                 draft = draft_lookup[key]

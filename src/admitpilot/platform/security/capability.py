@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Protocol
 
+from admitpilot.platform.common.time import ensure_utc, utc_now
+
 
 @dataclass(slots=True)
 class CapabilityToken:
@@ -24,7 +26,7 @@ class CapabilityToken:
         return self.subject
 
     def is_expired(self, now: datetime | None = None) -> bool:
-        return (now or datetime.utcnow()) >= self.expires_at
+        return ensure_utc(now or utc_now()) >= ensure_utc(self.expires_at)
 
     def is_valid(self, now: datetime | None = None) -> bool:
         return not self.is_expired(now)
@@ -78,7 +80,7 @@ class CapabilityManager:
     policy: dict[str, set[str]] = field(default_factory=dict)
 
     def issue(self, principal: str, scopes: set[str]) -> CapabilityToken:
-        now = datetime.utcnow()
+        now = utc_now()
         return CapabilityToken(
             token_id=f"{principal}-{int(now.timestamp())}",
             subject=principal,

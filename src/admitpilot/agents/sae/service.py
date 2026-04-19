@@ -7,7 +7,7 @@ import json
 from admitpilot.agents.sae.prompts import SYSTEM_PROMPT
 from admitpilot.agents.sae.schemas import ProgramRecommendation, StrategicReport
 from admitpilot.core.schemas import AIEAgentOutput, UserProfile
-from admitpilot.platform.llm.qwen import QwenClient
+from admitpilot.platform.llm.openai import OpenAIClient
 
 
 class StrategicAdmissionsService:
@@ -16,8 +16,8 @@ class StrategicAdmissionsService:
     SUPPORTED_SCHOOLS = ("NUS", "NTU", "HKU", "CUHK", "HKUST")
     MODEL_BREAKDOWN = {"rule": 0.45, "semantic": 0.35, "risk": 0.20}
 
-    def __init__(self, llm_client: QwenClient | None = None) -> None:
-        self.llm_client = llm_client or QwenClient()
+    def __init__(self, llm_client: OpenAIClient | None = None) -> None:
+        self.llm_client = llm_client or OpenAIClient()
 
     def evaluate(self, user_profile: UserProfile, intelligence: AIEAgentOutput) -> StrategicReport:
         """输出分层推荐、优劣势和差距分析。"""

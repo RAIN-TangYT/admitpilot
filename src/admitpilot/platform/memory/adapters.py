@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
+from admitpilot.platform.common.time import ensure_utc, to_iso_utc, utc_now
 from admitpilot.platform.memory.contracts import MemoryNamespace, MemoryRecord, VersionedRecord
 
 
@@ -34,7 +35,7 @@ class SessionMemoryStore:
         evidence_level: str = "unknown",
         lineage: list[str] | None = None,
     ) -> MemoryRecord:
-        expires_at = datetime.utcnow() + timedelta(hours=self.ttl_hours)
+        expires_at = utc_now() + timedelta(hours=self.ttl_hours)
         current = self._data.setdefault(namespace, {})
         version = current[key].version + 1 if key in current else 1
         record = MemoryRecord(
@@ -55,7 +56,7 @@ class SessionMemoryStore:
                 "namespace": namespace,
                 "key": key,
                 "version": version,
-                "at": datetime.utcnow().isoformat(),
+                "at": to_iso_utc(),
             }
         )
         return record
@@ -63,7 +64,7 @@ class SessionMemoryStore:
     def set(self, key: str, value: dict[str, Any], ttl_seconds: int) -> None:
         self._compat_data[key] = _SessionValue(
             value=dict(value),
-            expires_at=datetime.utcnow() + timedelta(seconds=ttl_seconds),
+            expires_at=utc_now() + timedelta(seconds=ttl_seconds),
         )
 
     def get(self, namespace: str, key: str | None = None) -> MemoryRecord | dict[str, Any] | None:
@@ -71,7 +72,7 @@ class SessionMemoryStore:
             stored = self._compat_data.get(namespace)
             if stored is None:
                 return None
-            if datetime.utcnow() >= stored.expires_at:
+            if ensure_utc(utc_now()) >= ensure_utc(stored.expires_at):
                 self._compat_data.pop(namespace, None)
                 return None
             return dict(stored.value)
@@ -129,7 +130,7 @@ class VersionedMemoryStore:
                 "namespace": namespace,
                 "key": key,
                 "version": next_version,
-                "at": datetime.utcnow().isoformat(),
+                "at": to_iso_utc(),
             }
         )
         return record
@@ -195,7 +196,7 @@ class ArtifactObjectStore:
                 "event": "artifact_put",
                 "namespace": namespace,
                 "object_id": object_id,
-                "at": datetime.utcnow().isoformat(),
+                "at": to_iso_utc(),
             }
         )
 

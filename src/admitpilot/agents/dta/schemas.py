@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
 
 @dataclass(slots=True)
@@ -28,28 +27,6 @@ class RiskMarker:
 
 
 @dataclass(slots=True)
-class Milestone:
-    """里程碑节点。"""
-
-    key: str
-    title: str
-    due_week: int
-    status: str = "planned"
-    depends_on: list[str] = field(default_factory=list)
-
-
-@dataclass(slots=True)
-class Milestone:
-    """里程碑节点。"""
-
-    key: str
-    title: str
-    due_week: int
-    status: str = "planned"
-    depends_on: list[str] = field(default_factory=list)
-
-
-@dataclass(slots=True)
 class WeekTask:
     """周级执行任务。"""
 
@@ -58,16 +35,6 @@ class WeekTask:
     items: list[str] = field(default_factory=list)
     risks: list[str] = field(default_factory=list)
     school_scope: list[str] = field(default_factory=list)
-
-
-@dataclass(slots=True)
-class RiskMarker:
-    """风险标记。"""
-
-    week: int
-    level: str
-    message: str
-    mitigation: str
 
 
 @dataclass(slots=True)

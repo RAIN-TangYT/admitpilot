@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import math
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from statistics import mean
 
-from admitpilot.agents.aie.prompts import SYSTEM_PROMPT
 from admitpilot.agents.aie.gateways import (
     CaseSourceGateway,
     OfficialSourceGateway,
     StubCaseSourceGateway,
     StubOfficialSourceGateway,
 )
+from admitpilot.agents.aie.prompts import SYSTEM_PROMPT
 from admitpilot.agents.aie.repositories import (
     CaseSnapshotRepository,
     InMemoryCaseSnapshotRepository,
@@ -27,7 +27,8 @@ from admitpilot.agents.aie.schemas import (
     OfficialAdmissionRecord,
     OfficialCycleSnapshot,
 )
-from admitpilot.platform.llm.qwen import QwenClient
+from admitpilot.platform.common.time import utc_now, utc_today
+from admitpilot.platform.llm.openai import OpenAIClient
 
 
 class AdmissionsIntelligenceService:
@@ -41,13 +42,13 @@ class AdmissionsIntelligenceService:
         case_gateway: CaseSourceGateway | None = None,
         official_repository: OfficialSnapshotRepository | None = None,
         case_repository: CaseSnapshotRepository | None = None,
-        llm_client: QwenClient | None = None,
+        llm_client: OpenAIClient | None = None,
     ) -> None:
         self.official_gateway = official_gateway or StubOfficialSourceGateway()
         self.case_gateway = case_gateway or StubCaseSourceGateway()
         self.official_repository = official_repository or InMemoryOfficialSnapshotRepository()
         self.case_repository = case_repository or InMemoryCaseSnapshotRepository()
-        self.llm_client = llm_client or QwenClient()
+        self.llm_client = llm_client or OpenAIClient()
         self._official_long_memory = self._build_official_long_memory()
         self._case_long_memory: list[CaseRecord] = []
 
@@ -61,7 +62,7 @@ class AdmissionsIntelligenceService:
     ) -> AdmissionsIntelligencePack:
         """返回标准化招生情报包。"""
         target_schools = self._normalize_target_schools(schools)
-        target_date = as_of_date or date.today()
+        target_date = as_of_date or utc_today()
         normalized_program = self._normalize_program(program)
         official_snapshots: list[OfficialCycleSnapshot] = []
         forecast_signals: list[ForecastSignal] = []
@@ -133,6 +134,24 @@ class AdmissionsIntelligenceService:
     ) -> list[ForecastSignal]:
         if not self.llm_client.enabled:
             return forecast_signals
+        official_status_seed = [
+            {
+                "school": snapshot.school,
+                "status": snapshot.status,
+                "confidence": round(snapshot.confidence, 2),
+            }
+            for snapshot in official_snapshots
+        ]
+        forecast_seed = [
+            {
+                "school": signal.school,
+                "insight": signal.insight,
+                "confidence": round(signal.confidence, 2),
+                "basis": signal.basis,
+                "reason": signal.reason,
+            }
+            for signal in forecast_signals
+        ]
         prompt = "\n".join(
             [
                 "请基于以下招生情报生成 JSON。",
@@ -141,9 +160,9 @@ class AdmissionsIntelligenceService:
                 f"query={query}",
                 f"cycle={cycle}",
                 f"program={program}",
-                f"official_status={[{'school': item.school, 'status': item.status, 'confidence': round(item.confidence, 2)} for item in official_snapshots]}",
+                f"official_status={official_status_seed}",
                 f"case_patterns_seed={case_patterns}",
-                f"forecast_seed={[{'school': item.school, 'insight': item.insight, 'confidence': round(item.confidence, 2), 'basis': item.basis, 'reason': item.reason} for item in forecast_signals]}",
+                f"forecast_seed={forecast_seed}",
             ]
         )
         try:
@@ -187,7 +206,7 @@ class AdmissionsIntelligenceService:
         cache_key = self._official_cache_key(
             school=school, program=program, cycle=cycle, as_of_date=as_of_date
         )
-        now = datetime.utcnow()
+        now = utc_now()
         cached = self.official_repository.get(cache_key, as_of=now)
         if cached is not None:
             return cached, True
@@ -238,7 +257,7 @@ class AdmissionsIntelligenceService:
         cache_key = self._case_cache_key(
             schools=schools, program=program, cycle=cycle, as_of_date=as_of_date
         )
-        now = datetime.utcnow()
+        now = utc_now()
         cached = self.case_repository.get(cache_key, as_of=now)
         if cached is not None:
             return cached, True
@@ -303,7 +322,7 @@ class AdmissionsIntelligenceService:
                 f"{school}-{item.cycle}-{item.page_type}" for item in basis_records[-6:]
             ],
             update_released=False,
-            expires_at=datetime.now() + timedelta(days=7),
+            expires_at=utc_now() + timedelta(days=7),
         )
 
     def _normalize_target_schools(self, schools: list[str] | None) -> list[str]:
@@ -344,7 +363,7 @@ class AdmissionsIntelligenceService:
 
     def _build_official_long_memory(self) -> list[OfficialAdmissionRecord]:
         records: list[OfficialAdmissionRecord] = []
-        today = date.today()
+        today = utc_today()
         for school in self.OFFICIAL_SCHOOLS:
             for offset in range(1, 6):
                 cycle_year = today.year - offset
@@ -359,7 +378,7 @@ class AdmissionsIntelligenceService:
                         content=f"{school} {cycle_year} 历史招生政策归档。",
                         published_date=published_date,
                         effective_date=published_date,
-                        fetched_at=datetime.utcnow() - timedelta(days=offset * 180),
+                        fetched_at=utc_now() - timedelta(days=offset * 180),
                         source_hash=f"{school}-{cycle_year}-history",
                         quality_score=0.9,
                         confidence=self._historical_confidence(offset),
@@ -384,6 +403,8 @@ class AdmissionsIntelligenceService:
             self._official_long_memory.append(record)
             existing_keys.add(key)
 
-    def _official_record_key(self, record: OfficialAdmissionRecord) -> tuple[str, str, str, str, str]:
+    def _official_record_key(
+        self, record: OfficialAdmissionRecord
+    ) -> tuple[str, str, str, str, str]:
         version = record.version_id or record.source_hash
         return (record.school, record.program, record.cycle, record.page_type, version)

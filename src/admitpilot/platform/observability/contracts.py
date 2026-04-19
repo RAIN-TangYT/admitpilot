@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any
+
+from admitpilot.platform.common.time import to_iso_utc
 
 
 @dataclass(slots=True)
@@ -20,7 +21,7 @@ class TraceCollector:
                 "name": name,
                 "trace_id": trace_id,
                 "attrs": attrs or {},
-                "at": datetime.utcnow().isoformat(),
+                "at": to_iso_utc(),
             }
         )
 
@@ -31,7 +32,7 @@ class TraceCollector:
                 "name": name,
                 "trace_id": trace_id,
                 "attrs": attrs or {},
-                "at": datetime.utcnow().isoformat(),
+                "at": to_iso_utc(),
             }
         )
 
