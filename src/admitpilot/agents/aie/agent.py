@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
 from typing import Any, cast
 
+from admitpilot.agents.aie.schemas import CaseRecord, ForecastSignal
 from admitpilot.agents.aie.service import AdmissionsIntelligenceService
 from admitpilot.agents.base import BaseAgent
 from admitpilot.core.schemas import AgentResult, AgentTask, AIEAgentOutput, ApplicationContext
@@ -36,39 +38,89 @@ class AIEAgent(BaseAgent):
             )
         cycle = str(context.constraints.get("cycle", "2026"))
         target_schools = self._resolve_target_schools(task=task, context=context)
-        target_program = self._resolve_target_program(task=task, context=context)
-        pack = self.service.retrieve(
-            query=context.user_query,
-            cycle=cycle,
-            schools=target_schools,
-            program=target_program,
-            as_of_date=utc_today(),
+        target_program_by_school = self._resolve_target_programs_by_school(
+            task=task,
+            context=context,
+            target_schools=target_schools,
         )
+        packs = [
+            self.service.retrieve(
+                query=context.user_query,
+                cycle=cycle,
+                schools=[school],
+                program=target_program_by_school[school],
+                as_of_date=utc_today(),
+            )
+            for school in target_schools
+        ]
+        official_snapshots = [
+            snapshot
+            for pack in packs
+            for snapshot in pack.official_cycle_snapshots
+        ]
+        official_status_by_school = {
+            snapshot.school: snapshot.status for snapshot in official_snapshots
+        }
+        forecast_signals: list[ForecastSignal] = []
+        seen_forecast_keys: set[tuple[str, str]] = set()
+        for pack in packs:
+            for signal in pack.forecast_signals:
+                forecast_key = (signal.school, signal.reason)
+                if forecast_key in seen_forecast_keys:
+                    continue
+                seen_forecast_keys.add(forecast_key)
+                forecast_signals.append(signal)
+        case_records: list[CaseRecord] = []
+        seen_case_keys: set[tuple[str, str, str, str]] = set()
+        for pack in packs:
+            for item in pack.case_long_memory:
+                case_key = (
+                    item.candidate_fingerprint,
+                    item.school,
+                    item.program,
+                    item.cycle,
+                )
+                if case_key in seen_case_keys:
+                    continue
+                seen_case_keys.add(case_key)
+                case_records.append(item)
+        case_patterns: list[str] = []
+        for pack in packs:
+            for pattern in pack.case_snapshot.patterns if pack.case_snapshot else []:
+                if pattern not in case_patterns:
+                    case_patterns.append(pattern)
         avg_official_confidence = (
-            sum(item.confidence for item in pack.official_cycle_snapshots)
-            / len(pack.official_cycle_snapshots)
-            if pack.official_cycle_snapshots
+            sum(item.confidence for item in official_snapshots)
+            / len(official_snapshots)
+            if official_snapshots
             else 0.0
         )
         case_confidence = 0.0
-        if pack.case_long_memory:
-            case_confidence = sum(item.confidence for item in pack.case_long_memory) / len(
-                pack.case_long_memory
-            )
-        prediction_used = any(item.is_predicted for item in pack.official_cycle_snapshots)
+        if case_records:
+            case_confidence = sum(item.confidence for item in case_records) / len(case_records)
+        prediction_used = any(item.is_predicted for item in official_snapshots)
+        unique_programs = list(
+            dict.fromkeys(target_program_by_school[school] for school in target_schools)
+        )
+        target_program = (
+            unique_programs[0] if len(unique_programs) == 1 else "MULTI_PROGRAM_PORTFOLIO"
+        )
         output: AIEAgentOutput = {
             "cycle": cycle,
             "as_of_date": utc_today().isoformat(),
             "target_schools": target_schools,
             "target_program": target_program,
-            "official_status_by_school": dict(pack.official_status_by_school),
+            "target_program_by_school": dict(target_program_by_school),
+            "official_status_by_school": {
+                school: str(status) for school, status in official_status_by_school.items()
+            },
             "official_records": [
                 self._official_record_to_dict(item)
-                for snapshot in pack.official_cycle_snapshots
+                for snapshot in official_snapshots
                 for item in snapshot.entries
             ],
-            "case_records": [self._case_record_to_dict(item) for item in pack.case_long_memory],
-            "case_patterns": list(pack.case_snapshot.patterns if pack.case_snapshot else []),
+            "case_records": [self._case_record_to_dict(item) for item in case_records],
+            "case_patterns": case_patterns,
             "forecast_signals": [
                 {
                     "school": signal.school,
@@ -77,12 +129,12 @@ class AIEAgent(BaseAgent):
                     "basis": signal.basis,
                     "reason": signal.reason,
                 }
-                for signal in pack.forecast_signals
+                for signal in forecast_signals
             ],
-            "evidence_levels": self._build_evidence_levels(pack.official_status_by_school),
+            "evidence_levels": self._build_evidence_levels(official_status_by_school),
             "official_confidence": avg_official_confidence,
             "case_confidence": case_confidence,
-            "cache_hit_count": pack.cache_hit_count,
+            "cache_hit_count": sum(pack.cache_hit_count for pack in packs),
             "prediction_used": prediction_used,
         }
         return AgentResult(
@@ -102,10 +154,10 @@ class AIEAgent(BaseAgent):
             else constraint_schools
         )
         if isinstance(schools, list) and schools:
-            return [str(item).upper() for item in schools]
+            return self.service.catalog.normalize_school_scope(str(item) for item in schools)
         if context.profile.target_schools:
-            return [item.upper() for item in context.profile.target_schools]
-        return list(self.service.OFFICIAL_SCHOOLS)
+            return self.service.catalog.normalize_school_scope(context.profile.target_schools)
+        return list(self.service.catalog.all_school_codes())
 
     def _resolve_target_program(self, task: AgentTask, context: ApplicationContext) -> str:
         payload_program = task.payload.get("target_program")
@@ -120,7 +172,50 @@ class AIEAgent(BaseAgent):
             return context.profile.major_interest
         return "MSCS"
 
-    def _build_evidence_levels(self, status_by_school: dict[str, str]) -> dict[str, str]:
+    def _resolve_target_programs_by_school(
+        self,
+        task: AgentTask,
+        context: ApplicationContext,
+        target_schools: list[str],
+    ) -> dict[str, str]:
+        portfolio = self.service.catalog.default_program_portfolio(target_schools)
+        profile_programs = [
+            normalized
+            for item in context.profile.target_programs
+            if (normalized := self.service.catalog.normalize_program_code(item)) is not None
+        ]
+        for school in target_schools:
+            for program in profile_programs:
+                if self.service.catalog.is_supported_program(school, program):
+                    portfolio[school] = program
+                    break
+        explicit_program = self._resolve_target_program(task=task, context=context)
+        normalized_explicit = self.service.catalog.normalize_program_code(explicit_program)
+        if normalized_explicit is not None:
+            for school in target_schools:
+                if self.service.catalog.is_supported_program(school, normalized_explicit):
+                    portfolio[school] = normalized_explicit
+        for raw_mapping in (
+            context.constraints.get("target_program_by_school"),
+            task.payload.get("target_program_by_school"),
+        ):
+            if not isinstance(raw_mapping, dict):
+                continue
+            for raw_school, raw_program in raw_mapping.items():
+                school_code = self.service.catalog.normalize_school_code(str(raw_school))
+                program_code = self.service.catalog.normalize_program_code(str(raw_program))
+                if school_code is None or program_code is None:
+                    continue
+                if school_code not in target_schools:
+                    continue
+                if self.service.catalog.is_supported_program(school_code, program_code):
+                    portfolio[school_code] = program_code
+        return {
+            school: portfolio.get(school) or self.service.catalog.supported_programs(school)[0]
+            for school in target_schools
+        }
+
+    def _build_evidence_levels(self, status_by_school: Mapping[str, str]) -> dict[str, str]:
         levels: dict[str, str] = {}
         for school, status in status_by_school.items():
             levels[school] = (
@@ -138,7 +233,12 @@ class AIEAgent(BaseAgent):
             "source_url": str(record.get("source_url", "")),
             "version_id": str(record.get("version_id", "")),
             "confidence": float(record.get("confidence", 0.0)),
+            "parse_confidence": float(record.get("parse_confidence", 0.0)),
             "is_policy_change": bool(record.get("is_policy_change", False)),
+            "change_type": str(record.get("change_type", "")),
+            "changed_fields": ",".join(
+                str(item) for item in record.get("changed_fields", []) if str(item)
+            ),
         }
 
     def _case_record_to_dict(self, item: object) -> dict[str, str | float]:

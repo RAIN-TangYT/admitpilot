@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from admitpilot.agents.aie.agent import AIEAgent
-from admitpilot.agents.aie.service import AdmissionsIntelligenceService
+from admitpilot.agents.aie.runtime import build_runtime_aie_service
 from admitpilot.agents.base import BaseAgent
 from admitpilot.agents.cds.agent import CDSAgent
 from admitpilot.agents.cds.service import CoreDocumentService
@@ -35,7 +35,12 @@ def build_default_agents(settings: AdmitPilotSettings | None = None) -> dict[str
     effective_settings = settings or load_settings()
     llm_client = OpenAIClient(settings=effective_settings)
     return {
-        "aie": AIEAgent(service=AdmissionsIntelligenceService(llm_client=llm_client)),
+        "aie": AIEAgent(
+            service=build_runtime_aie_service(
+                settings=effective_settings,
+                llm_client=llm_client,
+            )
+        ),
         "sae": SAEAgent(service=StrategicAdmissionsService(llm_client=llm_client)),
         "dta": DTAAgent(service=DynamicTimelineService(llm_client=llm_client)),
         "cds": CDSAgent(service=CoreDocumentService(llm_client=llm_client)),

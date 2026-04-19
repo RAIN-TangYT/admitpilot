@@ -20,6 +20,7 @@ _ENV_KEYS = (
     "ADMITPILOT_OBJECT_STORE_BUCKET",
     "ADMITPILOT_OBJECT_STORE_ACCESS_KEY",
     "ADMITPILOT_OBJECT_STORE_SECRET_KEY",
+    "ADMITPILOT_OFFICIAL_LIBRARY_PATH",
     "ADMITPILOT_API_HOST",
     "ADMITPILOT_API_PORT",
 )
@@ -47,6 +48,7 @@ def test_load_settings_uses_defaults_when_env_is_empty(monkeypatch: pytest.Monke
         assert settings.timezone == "Asia/Shanghai"
         assert settings.default_cycle == "2026"
         assert settings.openai_model == "gpt-5.4-nano"
+        assert settings.official_library_path == "data/official_library/official_library.json"
         assert settings.api_port == 8000
     finally:
         env_file.unlink(missing_ok=True)

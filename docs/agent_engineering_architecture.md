@@ -1,6 +1,6 @@
 # AdmitPilot Agent Engineering Architecture
 
-- 文档日期：`2026-04-19`
+- 文档日期：`2026-04-20`
 - 文档定位：当前代码基线的高层架构说明
 - 规范优先级：
   - 产品目标与课程背景：`docs/Project_Proposal_Group 26 (TANG Yutong, CHEN Jinghao, ZHANG Yufei, SHI Junren).docx`
@@ -19,9 +19,12 @@ AdmitPilot 当前是一个“可演示的多代理申请支持原型”，不是
 - 配置层、应用工厂、FastAPI 健康检查骨架
 - 基础平台层骨架：memory / runtime / governance / security / observability
 - OpenAI 默认模型接入：`gpt-5.4-nano`
+- AIE 运行时默认读取官方库：`data/official_library/official_library.json`
+- AIE live 官方刷新入口：`refresh_official_library.py`
+- demo 默认按“学校 -> 项目”组合运行，而不是统一单项目
 
 尚未具备：
-- 真实官网抓取与解析
+- 全量院校项目的 live 官方页覆盖
 - 生产级数据库、缓存、对象存储
 - 规则 DSL、排期器、证据抽取器
 - 生产级治理闸门与可观测链路
@@ -50,7 +53,7 @@ AdmitPilot 当前是一个“可演示的多代理申请支持原型”，不是
 路径：`src/admitpilot/agents`
 
 职责：
-- `AIE`：招生情报与快照
+- `AIE`：招生情报、官方库刷新与快照
 - `SAE`：选校评估与风险排序
 - `DTA`：时间线与里程碑计划
 - `CDS`：文书支持与一致性检查
@@ -97,9 +100,18 @@ AdmitPilot 当前是一个“可演示的多代理申请支持原型”，不是
 3. `DTA` 基于 `AIE + SAE` 生成计划
 4. `CDS` 基于 `SAE + DTA` 生成文书支持包
 
+当前默认 demo 组合：
+
+- `NUS -> MCOMP_CS`
+- `NTU -> MSAI`
+- `HKU -> MSCS`
+- `CUHK -> MSCS`
+- `HKUST -> MSIT`
+
 当前默认入口：
 - CLI：`python -m admitpilot.main`
 - API：`python -m uvicorn admitpilot.api.main:app --reload`
+- 官方库刷新：`python -m admitpilot.debug.refresh_official_library --cycle 2026`
 
 ## 4. 模块边界
 
@@ -107,7 +119,7 @@ AdmitPilot 当前是一个“可演示的多代理申请支持原型”，不是
 
 - AIE 边界：
   - `src/admitpilot/agents/aie/*`
-  - 负责学校/项目目录、抓取、解析、快照、diff
+  - 负责学校/项目目录、live 抓取、解析、官方库、快照、diff
 
 - SAE 边界：
   - `src/admitpilot/agents/sae/*`

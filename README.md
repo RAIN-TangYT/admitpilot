@@ -5,13 +5,24 @@ AdmitPilot 是一个面向留学申请场景的多代理编排原型。系统由
 五校泛计算机项目的情报、策略、时间线与文书支持。
 
 当前仓库状态是“可演示原型”，不是生产应用。核心 CLI 流程与测试可运行，但
-真实官网抓取、持久化后端、规则引擎、排期器与文书证据系统仍在实施中。
+全量 live 官方页覆盖、持久化后端、规则引擎、排期器与文书证据系统仍在实施中。
 
 ## 当前基线
 
 - 默认 LLM 提供方：OpenAI
 - 默认模型：`gpt-5.4-nano`
+- AIE 运行时默认读取：`data/official_library/official_library.json`
+- 官方库刷新入口：`python -m admitpilot.debug.refresh_official_library --cycle 2026`
+- 默认 demo 项目组合：
+  - `NUS -> MCOMP_CS`
+  - `NTU -> MSAI`
+  - `HKU -> MSCS`
+  - `CUHK -> MSCS`
+  - `HKUST -> MSIT`
 - 已验证命令：
+  - `python -m admitpilot.debug.refresh_official_library --cycle 2026`
+  - `python -m ruff check src tests`
+  - `python -m mypy src tests`
   - `python -m pytest -q`
   - `python -m admitpilot.main`
 - 推荐运行环境：`admitpilot` conda 环境
@@ -29,13 +40,18 @@ AdmitPilot 是一个面向留学申请场景的多代理编排原型。系统由
 
 ## 文档约定
 
-当前以以下三份文档作为主要事实来源：
+当前 `docs` 目录中的文档都应与代码基线保持一致。建议按以下角色理解：
 
 - `docs/Project_Proposal_Group 26 (TANG Yutong, CHEN Jinghao, ZHANG Yufei, SHI Junren).docx`
+  - 课程 proposal 与项目起点
 - `docs/implementation_plan.md`
+  - 从 demo 到真实应用的分步实施路线
 - `docs/progress.md`
-
-其余 `docs/*.md` 若与代码不一致，应视为待清理或待重写的辅助文档，不应作为当前实现真相来源。
+  - 实际落地进度与验证记录
+- `docs/agent_engineering_architecture.md`
+  - 当前代码基线的高层架构说明
+- `docs/project_full_documentation.md`
+  - 当前支持范围、live 支持矩阵与仓库状态快照
 
 ## 环境准备
 
@@ -75,20 +91,17 @@ python -m uvicorn admitpilot.api.main:app --reload
 
 ```bash
 $env:PYTHONPATH='src'
+python -m admitpilot.debug.refresh_official_library --cycle 2026
+python -m ruff check src tests
+python -m mypy src tests
 python -m pytest -q
-```
-
-以下检查建议在提交前继续收敛，但当前基线尚未完全清零：
-
-```bash
-$env:PYTHONPATH='src'
-python -m ruff check .
-python -m mypy
+python -m admitpilot.main
 ```
 
 ## 当前限制
 
-- `AIE` 仍以 stub gateway 为主，尚未完成真实官网抓取与解析。
+- `AIE` 运行时默认读取官方库，`fixture` 仅保留给测试使用。
+- `AIE` 已支持 live 官方页刷新，但还没有覆盖全部目录项目；当前支持矩阵见 `docs/project_full_documentation.md`。
 - `SAE` 仍包含规则与语义匹配占位逻辑。
 - `DTA` 尚未完成拓扑排序、deadline 逆排与自动重排。
 - `CDS` 尚未接入真实经历证据抽取与一致性图谱。

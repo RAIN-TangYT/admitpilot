@@ -7,7 +7,8 @@ def _build_intelligence() -> AIEAgentOutput:
         "cycle": "2026",
         "as_of_date": "2026-04-19",
         "target_schools": ["HKUST"],
-        "target_program": "MSCS",
+        "target_program": "MULTI_PROGRAM_PORTFOLIO",
+        "target_program_by_school": {"HKUST": "MSIT"},
         "official_status_by_school": {"HKUST": "official_found"},
         "official_records": [],
         "case_records": [],
@@ -54,3 +55,26 @@ def test_sae_evaluate_maps_stronger_profile_to_safer_tier() -> None:
     assert strong_recommendation.overall_score > weak_recommendation.overall_score
     assert strong_recommendation.tier == "safety"
     assert weak_recommendation.tier == "reach"
+
+
+def test_sae_uses_program_mapping_per_school() -> None:
+    service = StrategicAdmissionsService()
+    intelligence: AIEAgentOutput = {
+        **_build_intelligence(),
+        "target_schools": ["NUS", "HKUST"],
+        "target_program_by_school": {"NUS": "MCOMP_CS", "HKUST": "MSIT"},
+        "official_status_by_school": {"NUS": "official_found", "HKUST": "official_found"},
+        "evidence_levels": {"NUS": "official_primary", "HKUST": "official_primary"},
+    }
+    profile = UserProfile(
+        major_interest="Computing",
+        academic_metrics={"gpa": 3.8},
+        language_scores={"ielts": 7.5},
+    )
+
+    report = service.evaluate(profile, intelligence)
+
+    assert {item.school: item.program for item in report.recommendations} == {
+        "NUS": "MCOMP_CS",
+        "HKUST": "MSIT",
+    }

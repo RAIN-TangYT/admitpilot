@@ -10,7 +10,7 @@ from typing import Any, cast
 from uuid import uuid4
 
 from admitpilot.agents.aie.agent import AIEAgent
-from admitpilot.agents.aie.service import AdmissionsIntelligenceService
+from admitpilot.agents.aie.runtime import build_runtime_aie_service
 from admitpilot.agents.base import BaseAgent
 from admitpilot.agents.cds.agent import CDSAgent
 from admitpilot.agents.cds.service import CoreDocumentService
@@ -127,7 +127,12 @@ class PrincipalApplicationOrchestrator:
     def _build_default_agents(self, settings: AdmitPilotSettings) -> dict[str, BaseAgent]:
         llm_client = OpenAIClient(settings=settings)
         return {
-            "aie": AIEAgent(service=AdmissionsIntelligenceService(llm_client=llm_client)),
+            "aie": AIEAgent(
+                service=build_runtime_aie_service(
+                    settings=settings,
+                    llm_client=llm_client,
+                )
+            ),
             "sae": SAEAgent(service=StrategicAdmissionsService(llm_client=llm_client)),
             "dta": DTAAgent(service=DynamicTimelineService(llm_client=llm_client)),
             "cds": CDSAgent(service=CoreDocumentService(llm_client=llm_client)),
