@@ -65,6 +65,38 @@ def test_orchestrator_happy_path() -> None:
     assert "aie" in response.context.shared_memory
 
 
+def test_orchestrator_expands_strategy_for_timeline_only_query() -> None:
+    orchestrator = PrincipalApplicationOrchestrator()
+    response = orchestrator.invoke(
+        OrchestrationRequest(
+            user_query="请给我做申请时间线",
+            profile=UserProfile(major_interest="Computer Science"),
+            constraints={"cycle": "2026", "timezone": "Asia/Shanghai"},
+        )
+    )
+    agents = [result.agent for result in response.results]
+    assert agents == ["aie", "sae", "dta"]
+    assert all(result.status == TaskStatus.SUCCESS for result in response.results)
+    assert response.context is not None
+    assert not response.context.decisions.get("degraded_tasks")
+
+
+def test_orchestrator_expands_full_chain_for_documents_only_query() -> None:
+    orchestrator = PrincipalApplicationOrchestrator()
+    response = orchestrator.invoke(
+        OrchestrationRequest(
+            user_query="请帮我准备文书",
+            profile=UserProfile(major_interest="Computer Science"),
+            constraints={"cycle": "2026", "timezone": "Asia/Shanghai"},
+        )
+    )
+    agents = [result.agent for result in response.results]
+    assert agents == ["aie", "sae", "dta", "cds"]
+    assert all(result.status == TaskStatus.SUCCESS for result in response.results)
+    assert response.context is not None
+    assert not response.context.decisions.get("degraded_tasks")
+
+
 def test_orchestrator_handles_unknown_agent() -> None:
     orchestrator = PrincipalApplicationOrchestrator()
     orchestrator.router = cast(Any, UnknownAgentRouter())
@@ -112,6 +144,10 @@ def test_orchestrator_allows_degrade_task_execution() -> None:
     result = response.results[0]
     assert result.status == TaskStatus.SUCCESS
     assert result.success is True
+    assert result.output["document_drafts"] == []
+    assert "缺少上游" in result.output["consistency_issues"][0]["message"]
+    assert "申请动机与长期职业目标一致" not in str(result.output)
+    assert "关键里程碑数量=0" not in str(result.output)
     assert response.context is not None
     degraded = response.context.decisions.get("degraded_tasks", {})
     assert "draft_documents" in degraded

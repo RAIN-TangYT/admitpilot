@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Protocol
 
 from admitpilot.agents.aie.schemas import CaseRecord, OfficialAdmissionRecord
+from admitpilot.platform.common.time import utc_now
 
 
 class OfficialSourceGateway(Protocol):
@@ -42,7 +43,7 @@ class StubOfficialSourceGateway:
         self, school: str, program: str, cycle: str, query: str, as_of_date: date
     ) -> list[OfficialAdmissionRecord]:
         del query
-        now = datetime.utcnow()
+        now = utc_now()
         return [
             OfficialAdmissionRecord(
                 school=school,
@@ -89,7 +90,7 @@ class StubCaseSourceGateway:
     def fetch_case_records(
         self, schools: list[str], program: str, cycle: str, as_of_date: date
     ) -> list[CaseRecord]:
-        now = datetime.utcnow()
+        now = utc_now()
         records: list[CaseRecord] = []
         for idx, school in enumerate(schools):
             records.append(

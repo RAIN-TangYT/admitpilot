@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
-from datetime import date
 from typing import Any, cast
 
 from admitpilot.agents.aie.service import AdmissionsIntelligenceService
 from admitpilot.agents.base import BaseAgent
 from admitpilot.core.schemas import AgentResult, AgentTask, AIEAgentOutput, ApplicationContext
+from admitpilot.platform.common.time import utc_today
 
 
 class AIEAgent(BaseAgent):
@@ -23,15 +23,15 @@ class AIEAgent(BaseAgent):
     def run(self, task: AgentTask, context: ApplicationContext) -> AgentResult:
         """执行招生情报任务并输出标准结果。"""
         if task.name == "llm_smoke_test":
-            from admitpilot.platform.llm.qwen import qwen_chat
+            from admitpilot.platform.llm.openai import openai_chat
 
             prompt = str(task.payload.get("prompt") or context.user_query or "ping")
-            resp = qwen_chat(prompt=prompt)
+            resp = openai_chat(prompt=prompt)
             return AgentResult(
                 agent=self.name,
                 task=task.name,
                 success=True,
-                output={"provider": "qwen", "prompt": prompt, "content": resp.content},
+                output={"provider": "openai", "prompt": prompt, "content": resp.content},
                 confidence=1.0,
             )
         cycle = str(context.constraints.get("cycle", "2026"))
@@ -42,7 +42,7 @@ class AIEAgent(BaseAgent):
             cycle=cycle,
             schools=target_schools,
             program=target_program,
-            as_of_date=date.today(),
+            as_of_date=utc_today(),
         )
         avg_official_confidence = (
             sum(item.confidence for item in pack.official_cycle_snapshots)
@@ -58,7 +58,7 @@ class AIEAgent(BaseAgent):
         prediction_used = any(item.is_predicted for item in pack.official_cycle_snapshots)
         output: AIEAgentOutput = {
             "cycle": cycle,
-            "as_of_date": date.today().isoformat(),
+            "as_of_date": utc_today().isoformat(),
             "target_schools": target_schools,
             "target_program": target_program,
             "official_status_by_school": dict(pack.official_status_by_school),
