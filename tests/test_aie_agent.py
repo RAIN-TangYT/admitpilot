@@ -67,4 +67,10 @@ def test_aie_agent_uses_program_mapping_per_school() -> None:
 
     assert service.calls == [(("NUS",), "MCOMP_CS"), (("HKUST",), "MSIT")]
     assert result.output["target_program_by_school"] == {"NUS": "MCOMP_CS", "HKUST": "MSIT"}
+    assert result.output["official_source_urls_by_school"]["NUS"]["requirements"].startswith(
+        "https://"
+    )
+    assert result.output["official_source_urls_by_school"]["HKUST"]["deadline"].startswith(
+        "https://"
+    )
     assert result.output["target_program"] == "MULTI_PROGRAM_PORTFOLIO"

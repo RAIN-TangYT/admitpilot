@@ -86,3 +86,54 @@ def test_catalog_returns_runtime_default_program_portfolio() -> None:
         "CUHK": "MSCS",
         "HKUST": "MSIT",
     }
+
+
+def test_catalog_extracts_school_and_program_from_query_text() -> None:
+    catalog = DEFAULT_ADMISSIONS_CATALOG
+
+    schools = catalog.extract_school_codes_from_text(
+        "请告诉我 HKUST MSc in Information Technology 的官网要求和 deadline"
+    )
+    programs = catalog.extract_program_codes_from_text(
+        "请告诉我 HKUST MSc in Information Technology 的官网要求和 deadline",
+        school_code="HKUST",
+    )
+
+    assert schools == ["HKUST"]
+    assert programs == ["MSIT"]
+
+
+def test_catalog_extracts_chinese_school_name_from_query_text() -> None:
+    catalog = DEFAULT_ADMISSIONS_CATALOG
+
+    schools = catalog.extract_school_codes_from_text(
+        "请告诉我香港大学 Master of Data Science 的官网要求和 deadline"
+    )
+    programs = catalog.extract_program_codes_from_text(
+        "请告诉我香港大学 Master of Data Science 的官网要求和 deadline",
+        school_code="HKU",
+    )
+
+    assert schools == ["HKU"]
+    assert programs == ["MDS"]
+
+
+def test_catalog_extracts_short_program_alias_with_word_boundaries() -> None:
+    catalog = DEFAULT_ADMISSIONS_CATALOG
+
+    programs = catalog.extract_program_codes_from_text(
+        "请告诉我NUS的AIS的官网要求和截至时间",
+        school_code="NUS",
+    )
+
+    assert programs == ["MTECH_AIS"]
+
+
+def test_catalog_does_not_false_match_short_school_alias_inside_words() -> None:
+    catalog = DEFAULT_ADMISSIONS_CATALOG
+
+    schools = catalog.extract_school_codes_from_text(
+        "请告诉我香港大学 Master of Quantum Computing 的官网要求和 deadline"
+    )
+
+    assert schools == ["HKU"]

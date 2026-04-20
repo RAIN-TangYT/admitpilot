@@ -98,6 +98,9 @@ python -m pytest -q
 python -m admitpilot.main
 ```
 
+说明：
+- `2026-04-20` 已补齐测试负例 fixture：`tests/fixtures/official_pages/invalid_mscs_2026_deadline.html`，`python -m pytest -q` 全量可通过。
+
 ## 当前限制
 
 - `AIE` 运行时默认读取官方库，`fixture` 仅保留给测试使用。

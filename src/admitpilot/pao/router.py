@@ -21,7 +21,17 @@ class IntentRouter:
     )
     intent_keywords: dict[str, tuple[str, ...]] = field(
         default_factory=lambda: {
-            "intelligence": ("信息", "政策", "官网", "deadline", "要求", "更新"),
+            "intelligence": (
+                "信息",
+                "政策",
+                "官网",
+                "deadline",
+                "截止",
+                "截止时间",
+                "ddl",
+                "要求",
+                "更新",
+            ),
             "strategy": ("选校", "匹配", "定位", "风险", "reach", "match", "safety"),
             "timeline": ("时间线", "计划", "排期", "规划", "milestone", "任务"),
             "documents": ("文书", "ps", "sop", "cv", "面试", "叙事"),

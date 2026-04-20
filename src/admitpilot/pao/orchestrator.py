@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import traceback
 from collections.abc import Callable
 from copy import deepcopy
@@ -402,23 +403,14 @@ class PrincipalApplicationOrchestrator:
             current=workflow_status,
             target=final_target,
         )
-        parts = [
-            (
-                f"PAO已处理 {len(state['results'])} 个代理任务，"
-                f"success={success_count} failed={failed_count} skipped={skipped_count} "
-                f"workflow={final_status.value}。"
-            )
-        ]
-        for item in state["results"]:
-            parts.append(
-                f"[{item.agent.upper()}] {item.task}: "
-                f"status={item.status.value} confidence={item.confidence:.2f}"
-            )
-        return {
-            **state,
-            "workflow_status": final_status,
-            "final_summary": " ".join(parts),
-        }
+        final_summary = self._build_final_summary(
+            state=state,
+            workflow_status=final_status.value,
+            success_count=success_count,
+            failed_count=failed_count,
+            skipped_count=skipped_count,
+        )
+        return {**state, "workflow_status": final_status, "final_summary": final_summary}
 
     def _route_decision(self, state: PaoGraphState) -> str:
         return "dispatch" if state["pending_tasks"] else "aggregate"
@@ -558,3 +550,205 @@ class PrincipalApplicationOrchestrator:
         events = context.decisions.setdefault("events", [])
         if isinstance(events, list):
             events.append(event)
+
+    def _build_final_summary(
+        self,
+        state: PaoGraphState,
+        workflow_status: str,
+        success_count: int,
+        failed_count: int,
+        skipped_count: int,
+    ) -> str:
+        intelligent_summary = self._build_intelligence_only_summary(state["results"])
+        if intelligent_summary:
+            return intelligent_summary
+        parts = [
+            (
+                f"PAO已处理 {len(state['results'])} 个代理任务，"
+                f"success={success_count} failed={failed_count} skipped={skipped_count} "
+                f"workflow={workflow_status}。"
+            )
+        ]
+        for item in state["results"]:
+            parts.append(
+                f"[{item.agent.upper()}] {item.task}: "
+                f"status={item.status.value} confidence={item.confidence:.2f}"
+            )
+        return " ".join(parts)
+
+    def _build_intelligence_only_summary(self, results: list[AgentResult]) -> str:
+        if len(results) != 1:
+            return ""
+        result = results[0]
+        if result.agent != "aie" or result.task != "collect_intelligence":
+            return ""
+        if result.status != TaskStatus.SUCCESS:
+            return ""
+        output = cast(AIEAgentOutput, result.output)
+        cycle = str(output.get("cycle", ""))
+        target_program_by_school = output.get("target_program_by_school", {})
+        unsupported_program_by_school = output.get("unsupported_program_by_school", {})
+        source_urls_by_school = output.get("official_source_urls_by_school", {})
+        status_by_school = output.get("official_status_by_school", {})
+        official_records = output.get("official_records", [])
+        lines = [f"AIE 官网情报摘要（{cycle} 申请季）"]
+        for school in output.get("target_schools", []):
+            program = target_program_by_school.get(
+                school,
+                unsupported_program_by_school.get(school, str(output.get("target_program", ""))),
+            )
+            status = status_by_school.get(school, "predicted")
+            lines.append(
+                f"- {school} / {program}：{self._status_summary_label(status)}"
+            )
+            if status == "unsupported_program":
+                continue
+            school_records = [
+                item
+                for item in official_records
+                if item.get("school") == school and item.get("program") == program
+            ]
+            merged_fields = self._merge_extracted_fields(school_records)
+            if deadline := str(merged_fields.get("application_deadline", "")).strip():
+                lines.append(f"  截止时间：{deadline}")
+            if languages := merged_fields.get("language_requirements", []):
+                if isinstance(languages, list) and languages:
+                    lines.append(f"  语言要求：{', '.join(str(item) for item in languages[:4])}")
+            if materials := merged_fields.get("required_materials", []):
+                if isinstance(materials, list) and materials:
+                    lines.append(f"  材料要求：{', '.join(str(item) for item in materials[:4])}")
+            if academic := str(merged_fields.get("academic_requirement", "")).strip():
+                lines.append(f"  学术要求：{self._truncate_text(academic, limit=120)}")
+            resolved_urls = self._resolve_official_source_urls(
+                school_records=school_records,
+                configured_urls=source_urls_by_school.get(school, {}),
+            )
+            for url_label, url in resolved_urls:
+                if url_label == "official":
+                    lines.append(f"  官方来源：{url}")
+                else:
+                    lines.append(f"  官方来源（{url_label}）：{url}")
+        return "\n".join(lines)
+
+    def _merge_extracted_fields(self, records: list[dict[str, Any]]) -> dict[str, Any]:
+        ordered_records = sorted(
+            records,
+            key=lambda item: 0 if str(item.get("page_type", "")).lower() == "requirements" else 1,
+        )
+        merged: dict[str, Any] = {}
+        for record in ordered_records:
+            raw_fields = record.get("extracted_fields", {})
+            if not isinstance(raw_fields, dict):
+                continue
+            for key, value in raw_fields.items():
+                if value in ("", [], None):
+                    continue
+                if isinstance(value, list):
+                    current = merged.get(key)
+                    if not isinstance(current, list):
+                        current = []
+                    for item in value:
+                        if item in ("", None):
+                            continue
+                        if item not in current:
+                            current.append(item)
+                    if current:
+                        merged[key] = current
+                    continue
+                if key not in merged:
+                    merged[key] = value
+        raw_languages = merged.get("language_requirements")
+        if isinstance(raw_languages, list):
+            sanitized_languages = self._sanitize_language_requirements(raw_languages)
+            if sanitized_languages:
+                merged["language_requirements"] = sanitized_languages
+            else:
+                merged.pop("language_requirements", None)
+        return merged
+
+    def _sanitize_language_requirements(self, values: list[Any]) -> list[str]:
+        sanitized: list[str] = []
+        seen: set[str] = set()
+        for item in values:
+            normalized = " ".join(str(item).split())
+            if not normalized:
+                continue
+            ielts_match = re.fullmatch(
+                r"IELTS\s*([0-9]+(?:\.[0-9])?)",
+                normalized,
+                flags=re.IGNORECASE,
+            )
+            if ielts_match:
+                score = float(ielts_match.group(1))
+                if not (0.0 <= score <= 9.0):
+                    continue
+                normalized = f"IELTS {ielts_match.group(1)}"
+            else:
+                toefl_match = re.fullmatch(
+                    r"TOEFL(?:\s|-)?IBT?\s*([0-9]{2,3})|TOEFL\s*([0-9]{2,3})",
+                    normalized,
+                    flags=re.IGNORECASE,
+                )
+                if toefl_match:
+                    score_text = toefl_match.group(1) or toefl_match.group(2)
+                    if score_text is None:
+                        continue
+                    score = int(score_text)
+                    if not (60 <= score <= 677):
+                        continue
+                    normalized = f"TOEFL {score}"
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            sanitized.append(normalized)
+        return sanitized
+
+    def _status_summary_label(self, status: str) -> str:
+        labels = {
+            "official_found": "已获取到本季官方页面",
+            "mixed": "已获取到部分官方页面，信息可能不完整",
+            "predicted": "当前仅有历史预测，尚未拿到本季完整官方页",
+            "unsupported_program": "该项目不在当前支持列表（unsupported_program）",
+        }
+        return labels.get(status, status)
+
+    def _resolve_official_source_urls(
+        self,
+        school_records: list[dict[str, Any]],
+        configured_urls: Any,
+    ) -> list[tuple[str, str]]:
+        resolved_by_type: dict[str, str] = {}
+        fallback_url = ""
+        for item in school_records:
+            raw_url = str(item.get("source_url", "")).strip()
+            if not raw_url:
+                continue
+            page_type = str(item.get("page_type", "")).strip().lower()
+            if page_type in {"requirements", "deadline"} and page_type not in resolved_by_type:
+                resolved_by_type[page_type] = raw_url
+            if not fallback_url:
+                fallback_url = raw_url
+        if isinstance(configured_urls, dict):
+            for page_type in ("requirements", "deadline"):
+                raw_configured = configured_urls.get(page_type, "")
+                configured = str(raw_configured).strip()
+                if configured and page_type not in resolved_by_type:
+                    resolved_by_type[page_type] = configured
+        if resolved_by_type.get("requirements") and resolved_by_type.get("deadline"):
+            requirements_url = resolved_by_type["requirements"]
+            deadline_url = resolved_by_type["deadline"]
+            if requirements_url == deadline_url:
+                return [("official", requirements_url)]
+            return [("requirements", requirements_url), ("deadline", deadline_url)]
+        if resolved_by_type.get("requirements"):
+            return [("requirements", resolved_by_type["requirements"])]
+        if resolved_by_type.get("deadline"):
+            return [("deadline", resolved_by_type["deadline"])]
+        if fallback_url:
+            return [("official", fallback_url)]
+        return []
+
+    def _truncate_text(self, text: str, limit: int) -> str:
+        if len(text) <= limit:
+            return text
+        return f"{text[: limit - 3].rstrip()}..."
