@@ -81,4 +81,4 @@ def test_aie_service_detects_official_page_updates_across_snapshot_versions() ->
     assert baseline_deadline.version_id != updated_deadline.version_id
     assert updated_deadline.change_type == "updated"
     assert "application_deadline" in updated_deadline.changed_fields
-    assert updated_pack.official_cycle_snapshots[0].diffs[0]["page_type"] == "deadline"
+    assert updated_pack.official_cycle_snapshots[0].update_released is True

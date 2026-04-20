@@ -155,3 +155,72 @@ AdmitPilot 当前是一个“可演示的多代理申请支持原型”，不是
 - 进度写入 `docs/progress.md`
 - 路线写入 `docs/implementation_plan.md`
 - 对外说明写入 `README.md`
+
+## 6. 触发条件 / 输入输出 / 汇总机制（结构化表）
+
+本节与当前代码实现逐项对齐，主要对应：
+- `src/admitpilot/pao/router.py`
+- `src/admitpilot/pao/orchestrator.py`
+- `src/admitpilot/core/schemas.py`
+- `src/admitpilot/agents/*/agent.py`
+
+### 6.1 PAO 触发条件（Intent -> Task）
+
+| 用户问题命中意图 | 关键词（示例） | 直接触发任务 | 自动补全依赖后最终任务 |
+| --- | --- | --- | --- |
+| `intelligence` | `官网` `deadline` `截止` `要求` `政策` `更新` | `collect_intelligence` | `collect_intelligence` |
+| `strategy` | `选校` `匹配` `定位` `风险` `reach/match/safety` | `evaluate_strategy` | `collect_intelligence -> evaluate_strategy` |
+| `timeline` | `时间线` `计划` `排期` `规划` `milestone` | `build_timeline` | `collect_intelligence -> evaluate_strategy -> build_timeline` |
+| `documents` | `文书` `ps` `sop` `cv` `面试` `叙事` | `draft_documents` | `collect_intelligence -> evaluate_strategy -> build_timeline -> draft_documents` |
+| 未命中任何关键词 | 无 | 默认全链路 | `collect_intelligence -> evaluate_strategy -> build_timeline -> draft_documents` |
+
+补充说明：
+- `timeline` 会自动补全 `strategy` 依赖。
+- `documents` 会自动补全 `strategy + timeline` 依赖。
+- 多意图同时命中时，取并集后再做依赖闭包。
+
+### 6.2 任务依赖、共享内存要求与降级行为
+
+| 任务名 | Agent | depends_on | required_memory | can_degrade | 依赖不满足时行为 |
+| --- | --- | --- | --- | --- | --- |
+| `collect_intelligence` | `aie` | `[]` | `[]` | `false` | 正常执行（无上游依赖） |
+| `evaluate_strategy` | `sae` | `["collect_intelligence"]` | `["aie"]` | `false` | 生成 `SKIPPED` 结果，不执行 agent |
+| `build_timeline` | `dta` | `["evaluate_strategy"]` | `["aie","sae"]` | `false` | 生成 `SKIPPED` 结果，不执行 agent |
+| `draft_documents` | `cds` | `["evaluate_strategy","build_timeline"]` | `["sae","dta"]` | `true` | 默认记录 `degraded_tasks` 后继续执行；若 `SAE` 因 `missing_profile:*` 被阻断，则不降级、直接 `SKIPPED` |
+
+阻断判定来源：
+- 缺任务：`missing_task:<task>`
+- 上游失败：`failed_task:<task>`
+- 缺共享内存：`missing_memory:<namespace>`
+
+### 6.3 Agent 输入输出契约（基于 `ApplicationContext` + `SharedMemory`）
+
+| Agent | `run()` 直接输入 | 读取的上游共享内存 | 输出写回键 | 主要输出结构（`core/schemas.py`） |
+| --- | --- | --- | --- | --- |
+| `AIE` | `task`, `context.user_query`, `context.profile`, `context.constraints` | 无强制上游依赖 | `shared_memory["aie"]` | `AIEAgentOutput` |
+| `SAE` | `task`, `context.profile` | `shared_memory["aie"]` | `shared_memory["sae"]` | `SAEAgentOutput` |
+| `DTA` | `task`, `context.constraints` | `shared_memory["aie"]`, `shared_memory["sae"]` | `shared_memory["dta"]` | `DTAAgentOutput` |
+| `CDS` | `task` | `shared_memory["sae"]`, `shared_memory["dta"]` | `shared_memory["cds"]` | `CDSAgentOutput` |
+
+关键输出字段（摘要）：
+- `AIEAgentOutput`：`target_schools`、`target_program_by_school`、`official_status_by_school`、`official_records`、`official_source_urls_by_school`、`forecast_signals`。
+- `SAEAgentOutput`：`recommendations`、`ranking_order`、`gap_actions`、`model_breakdown`。
+- `DTAAgentOutput`：`milestones`、`weekly_plan`、`risk_markers`、`document_instructions`。
+- `CDSAgentOutput`：`document_drafts`、`interview_talking_points`、`consistency_issues`、`review_checklist`。
+
+### 6.4 PAO 汇总与用户回传机制
+
+| 汇总分支 | 触发条件 | `summary` 形式 | 对用户暴露内容 |
+| --- | --- | --- | --- |
+| 用户画像补全提示分支 | 任一任务被 `missing_profile:*` 阻断 | 生成“用户画像信息不完整，已暂停SAE择校及下游任务”提示 | 明确列出需补充字段（学历层次、专业方向、目标院校、目标项目、GPA、语言成绩、经历素材） |
+| AIE 情报摘要分支 | 本轮仅 1 个结果，且为 `aie:collect_intelligence:SUCCESS` | 生成“`AIE 官网情报摘要（<cycle>申请季）`”多行摘要 | 每校展示状态、截止时间、语言/材料/学术要求（如有）、官方 URL |
+| 通用执行摘要分支 | 其余所有场景 | 生成“已处理 N 个任务 + success/failed/skipped + 每任务状态与置信度” | 展示链路执行结果与健康度 |
+
+`OrchestrationResponse` 始终返回：
+- `summary`：面向用户的可读摘要。
+- `results`：每个 agent task 的结构化执行结果（含 `status/confidence/trace/blocked_by`）。
+- `context`：包含 `shared_memory`（AIE/SAE/DTA/CDS 结构化产物）与 `decisions`（如 `trace_id`、`degraded_tasks`、事件日志）。
+
+这意味着：
+- UI/CLI 可以只读 `summary` 做自然语言展示。
+- 调试、联调、评审可直接读取 `results + context.shared_memory` 获取可追溯的结构化细节。

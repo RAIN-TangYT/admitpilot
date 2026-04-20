@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from pathlib import Path
 
@@ -101,9 +102,20 @@ def test_json_official_repository_persists_versions() -> None:
         targets=[("HKUST", "MSCS")],
         as_of_date=date(2026, 10, 1),
     )
+    service.refresh_official_library(
+        query="refresh next day",
+        cycle="2026",
+        targets=[("HKUST", "MSCS")],
+        as_of_date=date(2026, 10, 2),
+    )
 
     reloaded = JsonOfficialSnapshotRepository(path=output_path)
     history_key = "HKUST:MSCS:2026:requirements"
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    raw_entries = payload.get("entries", {})
 
     assert reloaded.get_latest_record(history_key) is not None
     assert reloaded.list_record_versions(history_key)
+    assert len(raw_entries) == 1
+    snapshot_payload = next(iter(raw_entries.values()))["value"]
+    assert "diffs" not in snapshot_payload

@@ -83,9 +83,9 @@ class OfficialCycleSnapshot:
     confidence: float
     is_predicted: bool
     entries: list[OfficialAdmissionRecord] = field(default_factory=list)
+    source_urls: dict[str, str] = field(default_factory=dict)
     prediction_basis: list[str] = field(default_factory=list)
     update_released: bool = False
-    diffs: list[dict[str, Any]] = field(default_factory=list)
     expires_at: datetime | None = None
 
 

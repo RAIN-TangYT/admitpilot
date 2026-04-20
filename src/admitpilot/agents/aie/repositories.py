@@ -160,13 +160,14 @@ class JsonOfficialSnapshotRepository(InMemoryOfficialSnapshotRepository):
         self._persist()
 
     def _persist(self) -> None:
+        compact_entries = self._compact_official_entries()
         payload = {
             "entries": {
                 key: {
                     "value": self._serialize_snapshot(entry.value),
                     "expires_at": ensure_utc(entry.expires_at).isoformat(),
                 }
-                for key, entry in self._entries.items()
+                for key, entry in compact_entries.items()
                 if isinstance(entry.value, OfficialCycleSnapshot)
             },
             "history": {
@@ -178,6 +179,35 @@ class JsonOfficialSnapshotRepository(InMemoryOfficialSnapshotRepository):
             json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
             encoding="utf-8",
         )
+
+    def _compact_official_entries(self) -> dict[str, _CacheEntry]:
+        """Keep only the latest snapshot per school/program/cycle in persisted cache."""
+
+        latest_by_scope: dict[tuple[str, str, str], tuple[str, _CacheEntry]] = {}
+        compacted: dict[str, _CacheEntry] = {}
+        for key, entry in self._entries.items():
+            if not isinstance(entry.value, OfficialCycleSnapshot):
+                compacted[key] = entry
+                continue
+            snapshot = entry.value
+            scope_key = (snapshot.school, snapshot.program, snapshot.cycle)
+            existing = latest_by_scope.get(scope_key)
+            if existing is None:
+                latest_by_scope[scope_key] = (key, entry)
+                continue
+            existing_snapshot = cast(OfficialCycleSnapshot, existing[1].value)
+            if snapshot.as_of_date > existing_snapshot.as_of_date:
+                latest_by_scope[scope_key] = (key, entry)
+                continue
+            if (
+                snapshot.as_of_date == existing_snapshot.as_of_date
+                and ensure_utc(entry.expires_at) > ensure_utc(existing[1].expires_at)
+            ):
+                latest_by_scope[scope_key] = (key, entry)
+        for key, entry in latest_by_scope.values():
+            compacted[key] = entry
+        self._entries = compacted
+        return compacted
 
     def _load(self) -> None:
         payload = json.loads(self.path.read_text(encoding="utf-8"))
@@ -242,11 +272,15 @@ class JsonOfficialSnapshotRepository(InMemoryOfficialSnapshotRepository):
             if isinstance(raw_prediction_basis, list)
             else []
         )
-        raw_diffs = payload.get("diffs", [])
-        diffs = (
-            [dict(item) for item in raw_diffs if isinstance(item, dict)]
-            if isinstance(raw_diffs, list)
-            else []
+        raw_source_urls = payload.get("source_urls", {})
+        source_urls = (
+            {
+                str(key): str(value).strip()
+                for key, value in raw_source_urls.items()
+                if str(key).strip() and str(value).strip()
+            }
+            if isinstance(raw_source_urls, dict)
+            else {}
         )
         return OfficialCycleSnapshot(
             school=str(payload["school"]),
@@ -257,9 +291,9 @@ class JsonOfficialSnapshotRepository(InMemoryOfficialSnapshotRepository):
             confidence=float(cast(Any, payload["confidence"])),
             is_predicted=bool(payload["is_predicted"]),
             entries=entries,
+            source_urls=source_urls,
             prediction_basis=prediction_basis,
             update_released=bool(payload.get("update_released", False)),
-            diffs=diffs,
             expires_at=expires_at,
         )
 

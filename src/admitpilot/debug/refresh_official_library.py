@@ -47,7 +47,7 @@ def main() -> None:
                     "program": item.program,
                     "status": item.status,
                     "entries": len(item.entries),
-                    "diffs": len(item.diffs),
+                    "update_released": item.update_released,
                     "confidence": round(item.confidence, 4),
                 }
                 for item in snapshots

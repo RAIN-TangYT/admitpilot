@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 
 def _normalize_token(value: str) -> str:
     return "".join(ch for ch in value.upper() if ch.isalnum())
+
+
+def _is_short_ascii_token(value: str) -> bool:
+    return value.isascii() and value.isalnum() and len(value) <= 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +122,111 @@ class AdmissionsCatalog:
             seen.add(normalized)
         return resolved or list(self.all_school_codes())
 
+    def extract_school_codes_from_text(self, text: str) -> list[str]:
+        if not text.strip():
+            return []
+        upper_text = text.upper()
+        normalized_text = _normalize_token(text)
+        matches: list[tuple[int, int, str]] = []
+        for alias, code in self.school_aliases.items():
+            if _is_short_ascii_token(alias):
+                pattern = re.compile(
+                    rf"(?<![A-Z0-9]){re.escape(alias)}(?![A-Z0-9])",
+                    flags=re.IGNORECASE,
+                )
+                for match in pattern.finditer(upper_text):
+                    matches.append((match.start(), -len(alias), code))
+                continue
+            idx = normalized_text.find(alias)
+            if idx >= 0:
+                matches.append((idx, -len(alias), code))
+        ordered: list[str] = []
+        seen: set[str] = set()
+        for _, _, code in sorted(matches):
+            if code in seen:
+                continue
+            ordered.append(code)
+            seen.add(code)
+        return ordered
+
+    def extract_program_codes_from_text(
+        self,
+        text: str,
+        school_code: str | None = None,
+    ) -> list[str]:
+        normalized_text = _normalize_token(text)
+        if not normalized_text:
+            return []
+        upper_text = text.upper()
+        allowed_programs = (
+            set(self.supported_programs(school_code))
+            if school_code is not None
+            else set(self.program_aliases.values())
+        )
+        matches: list[tuple[int, int, int, str]] = []
+        for alias, code in self.program_aliases.items():
+            if code not in allowed_programs or not alias:
+                continue
+            normalized_code = _normalize_token(code)
+            # Short aliases must be token-bounded to avoid false positives,
+            # e.g. "AI" shouldn't match inside "AIS".
+            if _is_short_ascii_token(alias) and alias != normalized_code:
+                pattern = re.compile(
+                    rf"(?<![A-Z0-9]){re.escape(alias)}(?![A-Z0-9])",
+                    flags=re.IGNORECASE,
+                )
+                for match in pattern.finditer(upper_text):
+                    matches.append((match.start(), -len(alias), match.start() + len(alias), code))
+                continue
+            if len(alias) < 4 and alias != normalized_code:
+                continue
+            start = normalized_text.find(alias)
+            if start < 0:
+                continue
+            matches.append((start, -len(alias), start + len(alias), code))
+        return self._ordered_unique_codes(matches)
+
+    def has_program_intent(self, text: str) -> bool:
+        lowered = text.lower()
+        return any(
+            marker in lowered
+            for marker in (
+                "master",
+                "msc",
+                "ms ",
+                "ms-",
+                "硕士",
+                "项目",
+                "program",
+            )
+        )
+
+    def extract_program_hint(self, text: str) -> str:
+        # Try to keep the user-mentioned program phrase for unsupported_program reporting.
+        patterns = [
+            re.compile(
+                r"((?:master|msc)\s+(?:of|in)?\s*[a-z][a-z0-9&/\-\s]{2,80})",
+                flags=re.IGNORECASE,
+            ),
+            re.compile(r"([A-Za-z][A-Za-z0-9&/\-\s]{1,40}硕士)"),
+            re.compile(r"(硕士[A-Za-z0-9\u4e00-\u9fff&/\-\s]{1,30})"),
+        ]
+        for pattern in patterns:
+            match = pattern.search(text)
+            if match:
+                return " ".join(match.group(1).split()).strip(" ,.;，。；")
+        return ""
+
+    def program_display_name(self, school_code: str, program_code: str) -> str:
+        school = self.get_school(school_code)
+        normalized_program = self.normalize_program_code(program_code)
+        if school is None or normalized_program is None:
+            return program_code
+        program = school.programs.get(normalized_program)
+        if program is None:
+            return normalized_program
+        return program.display_name
+
     def build_page_url(
         self, school_code: str, program_code: str, cycle: str, page_type: str
     ) -> str:
@@ -132,6 +242,23 @@ class AdmissionsCatalog:
             f"https://{primary_domain}/admissions/"
             f"{program.slug}/{cycle}/{page_type}.html"
         )
+
+    def _ordered_unique_codes(self, matches: list[tuple[int, int, int, str]]) -> list[str]:
+        ordered: list[str] = []
+        seen: set[str] = set()
+        covered_spans: list[tuple[int, int]] = []
+        for start, _, end, code in sorted(matches):
+            if any(
+                start >= covered_start and end <= covered_end
+                for covered_start, covered_end in covered_spans
+            ):
+                continue
+            if code in seen:
+                continue
+            ordered.append(code)
+            seen.add(code)
+            covered_spans.append((start, end))
+        return ordered
 
 
 def _build_catalog() -> AdmissionsCatalog:
@@ -262,7 +389,7 @@ def _build_catalog() -> AdmissionsCatalog:
             code="MTECH_AIS",
             display_name="Master of Technology in Artificial Intelligence Systems",
             slug="mtech-ais",
-            aliases=("MASTEROFTECHNOLOGYINARTIFICIALINTELLIGENCESYSTEMS",),
+            aliases=("MASTEROFTECHNOLOGYINARTIFICIALINTELLIGENCESYSTEMS", "AIS"),
         ),
         "MTECH_SE": ProgramCatalogEntry(
             code="MTECH_SE",
@@ -395,17 +522,27 @@ def _build_catalog() -> AdmissionsCatalog:
     school_aliases = {
         "NUS": "NUS",
         "NATIONALUNIVERSITYOFSINGAPORE": "NUS",
+        "新加坡国立大学": "NUS",
+        "新国立": "NUS",
         "NTU": "NTU",
         "NANYANGTECHNOLOGICALUNIVERSITY": "NTU",
+        "南洋理工大学": "NTU",
+        "南洋理工": "NTU",
         "HKU": "HKU",
         "THEUNIVERSITYOFHONGKONG": "HKU",
         "UNIVERSITYOFHONGKONG": "HKU",
+        "香港大学": "HKU",
+        "港大": "HKU",
         "CUHK": "CUHK",
         "THECHINESEUNIVERSITYOFHONGKONG": "CUHK",
         "CHINESEUNIVERSITYOFHONGKONG": "CUHK",
+        "香港中文大学": "CUHK",
+        "港中文": "CUHK",
         "HKUST": "HKUST",
         "HONGKONGUNIVERSITYOFSCIENCEANDTECHNOLOGY": "HKUST",
         "THEHONGKONGUNIVERSITYOFSCIENCEANDTECHNOLOGY": "HKUST",
+        "香港科技大学": "HKUST",
+        "港科大": "HKUST",
     }
     program_aliases = {
         "MSCS": "MSCS",

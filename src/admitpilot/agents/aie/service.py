@@ -13,6 +13,7 @@ from admitpilot.agents.aie.gateways import (
     OfficialLibrarySourceGateway,
     OfficialSourceGateway,
 )
+from admitpilot.agents.aie.live_sources import build_live_source_url_map
 from admitpilot.agents.aie.prompts import SYSTEM_PROMPT
 from admitpilot.agents.aie.repositories import (
     CaseSnapshotRepository,
@@ -28,7 +29,7 @@ from admitpilot.agents.aie.schemas import (
     OfficialAdmissionRecord,
     OfficialCycleSnapshot,
 )
-from admitpilot.agents.aie.snapshots import SnapshotDiff, diff_official_record, record_identity
+from admitpilot.agents.aie.snapshots import diff_official_record, record_identity
 from admitpilot.domain.catalog import DEFAULT_ADMISSIONS_CATALOG, AdmissionsCatalog
 from admitpilot.platform.common.time import utc_now, utc_today
 from admitpilot.platform.llm.openai import OpenAIClient
@@ -54,6 +55,7 @@ class AdmissionsIntelligenceService:
         self.case_gateway = case_gateway or NullCaseSourceGateway()
         self.case_repository = case_repository or InMemoryCaseSnapshotRepository()
         self.llm_client = llm_client or OpenAIClient()
+        self._live_source_urls = build_live_source_url_map()
         self._official_long_memory = self._build_official_long_memory()
         self._case_long_memory: list[CaseRecord] = []
 
@@ -180,7 +182,7 @@ class AdmissionsIntelligenceService:
                 "school": snapshot.school,
                 "status": snapshot.status,
                 "confidence": round(snapshot.confidence, 2),
-                "diffs": snapshot.diffs,
+                "update_released": snapshot.update_released,
             }
             for snapshot in official_snapshots
         ]
@@ -267,7 +269,7 @@ class AdmissionsIntelligenceService:
                 as_of_date=as_of_date,
             )
             if records:
-                versioned_records, diffs = self._version_official_records(records)
+                versioned_records, update_released = self._version_official_records(records)
                 confidence = (
                     mean(item.confidence for item in versioned_records)
                     if versioned_records
@@ -289,8 +291,8 @@ class AdmissionsIntelligenceService:
                     confidence=confidence,
                     is_predicted=False,
                     entries=versioned_records,
-                    update_released=bool(diffs),
-                    diffs=[item.as_dict() for item in diffs],
+                    source_urls=self._configured_source_urls(school, program),
+                    update_released=update_released,
                     expires_at=now + timedelta(hours=24),
                 )
                 self._append_official_history(versioned_records)
@@ -384,12 +386,12 @@ class AdmissionsIntelligenceService:
             confidence=confidence,
             is_predicted=True,
             entries=[],
+            source_urls=self._configured_source_urls(school, program),
             prediction_basis=[
                 f"{school}-{item.cycle}-{item.page_type}:{item.version_id}"
                 for item in basis_records[-6:]
             ],
             update_released=False,
-            diffs=[],
             expires_at=utc_now() + timedelta(days=7),
         )
 
@@ -488,9 +490,9 @@ class AdmissionsIntelligenceService:
 
     def _version_official_records(
         self, records: list[OfficialAdmissionRecord]
-    ) -> tuple[list[OfficialAdmissionRecord], list[SnapshotDiff]]:
+    ) -> tuple[list[OfficialAdmissionRecord], bool]:
         versioned_records: list[OfficialAdmissionRecord] = []
-        diffs: list[SnapshotDiff] = []
+        has_updates = False
         for record in records:
             history_key = record_identity(record)
             previous = self.official_repository.get_latest_record(history_key)
@@ -499,11 +501,15 @@ class AdmissionsIntelligenceService:
                 self.official_repository.save_record_version(history_key, versioned_record)
             versioned_records.append(versioned_record)
             if diff is not None:
-                diffs.append(diff)
-        return versioned_records, diffs
+                has_updates = True
+        return versioned_records, has_updates
 
     def _official_record_key(
         self, record: OfficialAdmissionRecord
     ) -> tuple[str, str, str, str, str]:
         version = record.version_id or record.content_hash
         return (record.school, record.program, record.cycle, record.page_type, version)
+
+    def _configured_source_urls(self, school: str, program: str) -> dict[str, str]:
+        urls = self._live_source_urls.get((school, program))
+        return dict(urls) if urls else {}

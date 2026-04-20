@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import traceback
 from collections.abc import Callable
 from copy import deepcopy
@@ -28,6 +29,7 @@ from admitpilot.core.schemas import (
     DTAAgentOutput,
     SAEAgentOutput,
     SharedMemory,
+    UserProfile,
 )
 from admitpilot.pao.contracts import OrchestrationRequest, OrchestrationResponse
 from admitpilot.pao.router import IntentRouter
@@ -234,10 +236,15 @@ class PrincipalApplicationOrchestrator:
             context=context,
             prior_results=state["results"],
         )
-        if blockers and task.can_degrade:
+        profile_incomplete_block = self._should_skip_degrade_for_profile(
+            task=task,
+            blockers=blockers,
+            prior_results=state["results"],
+        )
+        if blockers and task.can_degrade and not profile_incomplete_block:
             degraded = context.decisions.setdefault("degraded_tasks", {})
             degraded[task.name] = blockers
-        if blockers and not task.can_degrade:
+        if blockers and (not task.can_degrade or profile_incomplete_block):
             result = self._build_skipped_result(
                 task=task,
                 agent_name=task.agent,
@@ -402,23 +409,14 @@ class PrincipalApplicationOrchestrator:
             current=workflow_status,
             target=final_target,
         )
-        parts = [
-            (
-                f"PAO已处理 {len(state['results'])} 个代理任务，"
-                f"success={success_count} failed={failed_count} skipped={skipped_count} "
-                f"workflow={final_status.value}。"
-            )
-        ]
-        for item in state["results"]:
-            parts.append(
-                f"[{item.agent.upper()}] {item.task}: "
-                f"status={item.status.value} confidence={item.confidence:.2f}"
-            )
-        return {
-            **state,
-            "workflow_status": final_status,
-            "final_summary": " ".join(parts),
-        }
+        final_summary = self._build_final_summary(
+            state=state,
+            workflow_status=final_status.value,
+            success_count=success_count,
+            failed_count=failed_count,
+            skipped_count=skipped_count,
+        )
+        return {**state, "workflow_status": final_status, "final_summary": final_summary}
 
     def _route_decision(self, state: PaoGraphState) -> str:
         return "dispatch" if state["pending_tasks"] else "aggregate"
@@ -453,7 +451,57 @@ class PrincipalApplicationOrchestrator:
         for memory_key in task.required_memory:
             if memory_key not in context.shared_memory:
                 blockers.append(f"missing_memory:{memory_key}")
+        if task.name == "evaluate_strategy":
+            blockers.extend(self._missing_profile_blockers(context.profile))
         return blockers
+
+    def _missing_profile_blockers(self, profile: UserProfile) -> list[str]:
+        blockers: list[str] = []
+        if not profile.degree_level.strip():
+            blockers.append("missing_profile:degree_level")
+        if not profile.major_interest.strip():
+            blockers.append("missing_profile:major_interest")
+        if not profile.target_schools:
+            blockers.append("missing_profile:target_schools")
+        if not profile.target_programs:
+            blockers.append("missing_profile:target_programs")
+        if not profile.experiences:
+            blockers.append("missing_profile:experiences")
+        if not self._is_positive_number(profile.academic_metrics.get("gpa")):
+            blockers.append("missing_profile:academic_metrics.gpa")
+        if not self._has_valid_language_score(profile.language_scores):
+            blockers.append("missing_profile:language_scores")
+        return blockers
+
+    def _is_positive_number(self, value: Any) -> bool:
+        try:
+            return float(value) > 0
+        except (TypeError, ValueError):
+            return False
+
+    def _has_valid_language_score(self, language_scores: dict[str, Any]) -> bool:
+        for key in ("ielts", "toefl", "toefl_ibt"):
+            if self._is_positive_number(language_scores.get(key)):
+                return True
+        return False
+
+    def _should_skip_degrade_for_profile(
+        self,
+        task: AgentTask,
+        blockers: list[str],
+        prior_results: list[AgentResult],
+    ) -> bool:
+        if not task.can_degrade:
+            return False
+        if any(item.startswith("missing_profile:") for item in blockers):
+            return True
+        if "failed_task:evaluate_strategy" not in blockers:
+            return False
+        results_by_task = {item.task: item for item in prior_results}
+        sae_result = results_by_task.get("evaluate_strategy")
+        if sae_result is None:
+            return False
+        return any(item.startswith("missing_profile:") for item in sae_result.blocked_by)
 
     def _build_failed_result(
         self,
@@ -558,3 +606,254 @@ class PrincipalApplicationOrchestrator:
         events = context.decisions.setdefault("events", [])
         if isinstance(events, list):
             events.append(event)
+
+    def _build_final_summary(
+        self,
+        state: PaoGraphState,
+        workflow_status: str,
+        success_count: int,
+        failed_count: int,
+        skipped_count: int,
+    ) -> str:
+        profile_summary = self._build_profile_completion_summary(state["results"])
+        if profile_summary:
+            return profile_summary
+        intelligent_summary = self._build_intelligence_only_summary(state["results"])
+        if intelligent_summary:
+            return intelligent_summary
+        parts = [
+            (
+                f"PAO已处理 {len(state['results'])} 个代理任务，"
+                f"success={success_count} failed={failed_count} skipped={skipped_count} "
+                f"workflow={workflow_status}。"
+            )
+        ]
+        for item in state["results"]:
+            parts.append(
+                f"[{item.agent.upper()}] {item.task}: "
+                f"status={item.status.value} confidence={item.confidence:.2f}"
+            )
+        return " ".join(parts)
+
+    def _build_profile_completion_summary(self, results: list[AgentResult]) -> str:
+        missing_fields = self._collect_missing_profile_fields(results)
+        if not missing_fields:
+            return ""
+        labels = [self._profile_field_label(item) for item in missing_fields]
+        return (
+            "用户画像信息不完整，已暂停SAE择校及下游任务。"
+            f"请补充以下字段后重试：{', '.join(labels)}。"
+        )
+
+    def _collect_missing_profile_fields(self, results: list[AgentResult]) -> list[str]:
+        ordered_keys = [
+            "degree_level",
+            "major_interest",
+            "target_schools",
+            "target_programs",
+            "academic_metrics.gpa",
+            "language_scores",
+            "experiences",
+        ]
+        seen: set[str] = set()
+        missing: list[str] = []
+        for result in results:
+            for blocker in result.blocked_by:
+                if not blocker.startswith("missing_profile:"):
+                    continue
+                key = blocker.split(":", 1)[1]
+                if key in seen:
+                    continue
+                seen.add(key)
+                missing.append(key)
+        order_map = {key: idx for idx, key in enumerate(ordered_keys)}
+        return sorted(missing, key=lambda item: order_map.get(item, len(order_map)))
+
+    def _profile_field_label(self, key: str) -> str:
+        labels = {
+            "degree_level": "学历层次",
+            "major_interest": "专业方向",
+            "target_schools": "目标院校",
+            "target_programs": "目标项目",
+            "academic_metrics.gpa": "GPA",
+            "language_scores": "语言成绩（IELTS/TOEFL）",
+            "experiences": "经历素材",
+        }
+        return labels.get(key, key)
+
+    def _build_intelligence_only_summary(self, results: list[AgentResult]) -> str:
+        if len(results) != 1:
+            return ""
+        result = results[0]
+        if result.agent != "aie" or result.task != "collect_intelligence":
+            return ""
+        if result.status != TaskStatus.SUCCESS:
+            return ""
+        output = cast(AIEAgentOutput, result.output)
+        cycle = str(output.get("cycle", ""))
+        target_program_by_school = output.get("target_program_by_school", {})
+        unsupported_program_by_school = output.get("unsupported_program_by_school", {})
+        source_urls_by_school = output.get("official_source_urls_by_school", {})
+        status_by_school = output.get("official_status_by_school", {})
+        official_records = output.get("official_records", [])
+        lines = [f"AIE 官网情报摘要（{cycle} 申请季）"]
+        for school in output.get("target_schools", []):
+            program = target_program_by_school.get(
+                school,
+                unsupported_program_by_school.get(school, str(output.get("target_program", ""))),
+            )
+            status = status_by_school.get(school, "predicted")
+            lines.append(
+                f"- {school} / {program}：{self._status_summary_label(status)}"
+            )
+            if status == "unsupported_program":
+                continue
+            school_records = [
+                item
+                for item in official_records
+                if item.get("school") == school and item.get("program") == program
+            ]
+            merged_fields = self._merge_extracted_fields(school_records)
+            if deadline := str(merged_fields.get("application_deadline", "")).strip():
+                lines.append(f"  截止时间：{deadline}")
+            if languages := merged_fields.get("language_requirements", []):
+                if isinstance(languages, list) and languages:
+                    lines.append(f"  语言要求：{', '.join(str(item) for item in languages[:4])}")
+            if materials := merged_fields.get("required_materials", []):
+                if isinstance(materials, list) and materials:
+                    lines.append(f"  材料要求：{', '.join(str(item) for item in materials[:4])}")
+            if academic := str(merged_fields.get("academic_requirement", "")).strip():
+                lines.append(f"  学术要求：{self._truncate_text(academic, limit=120)}")
+            resolved_urls = self._resolve_official_source_urls(
+                school_records=school_records,
+                configured_urls=source_urls_by_school.get(school, {}),
+            )
+            for url_label, url in resolved_urls:
+                if url_label == "official":
+                    lines.append(f"  官方来源：{url}")
+                else:
+                    lines.append(f"  官方来源（{url_label}）：{url}")
+        return "\n".join(lines)
+
+    def _merge_extracted_fields(self, records: list[dict[str, Any]]) -> dict[str, Any]:
+        ordered_records = sorted(
+            records,
+            key=lambda item: 0 if str(item.get("page_type", "")).lower() == "requirements" else 1,
+        )
+        merged: dict[str, Any] = {}
+        for record in ordered_records:
+            raw_fields = record.get("extracted_fields", {})
+            if not isinstance(raw_fields, dict):
+                continue
+            for key, value in raw_fields.items():
+                if value in ("", [], None):
+                    continue
+                if isinstance(value, list):
+                    current = merged.get(key)
+                    if not isinstance(current, list):
+                        current = []
+                    for item in value:
+                        if item in ("", None):
+                            continue
+                        if item not in current:
+                            current.append(item)
+                    if current:
+                        merged[key] = current
+                    continue
+                if key not in merged:
+                    merged[key] = value
+        raw_languages = merged.get("language_requirements")
+        if isinstance(raw_languages, list):
+            sanitized_languages = self._sanitize_language_requirements(raw_languages)
+            if sanitized_languages:
+                merged["language_requirements"] = sanitized_languages
+            else:
+                merged.pop("language_requirements", None)
+        return merged
+
+    def _sanitize_language_requirements(self, values: list[Any]) -> list[str]:
+        sanitized: list[str] = []
+        seen: set[str] = set()
+        for item in values:
+            normalized = " ".join(str(item).split())
+            if not normalized:
+                continue
+            ielts_match = re.fullmatch(
+                r"IELTS\s*([0-9]+(?:\.[0-9])?)",
+                normalized,
+                flags=re.IGNORECASE,
+            )
+            if ielts_match:
+                score = float(ielts_match.group(1))
+                if not (0.0 <= score <= 9.0):
+                    continue
+                normalized = f"IELTS {ielts_match.group(1)}"
+            else:
+                toefl_match = re.fullmatch(
+                    r"TOEFL(?:\s|-)?IBT?\s*([0-9]{2,3})|TOEFL\s*([0-9]{2,3})",
+                    normalized,
+                    flags=re.IGNORECASE,
+                )
+                if toefl_match:
+                    score_text = toefl_match.group(1) or toefl_match.group(2)
+                    if score_text is None:
+                        continue
+                    score = int(score_text)
+                    if not (60 <= score <= 677):
+                        continue
+                    normalized = f"TOEFL {score}"
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            sanitized.append(normalized)
+        return sanitized
+
+    def _status_summary_label(self, status: str) -> str:
+        labels = {
+            "official_found": "已获取到本季官方页面",
+            "mixed": "已获取到部分官方页面，信息可能不完整",
+            "predicted": "当前仅有历史预测，尚未拿到本季完整官方页",
+            "unsupported_program": "该项目不在当前支持列表（unsupported_program）",
+        }
+        return labels.get(status, status)
+
+    def _resolve_official_source_urls(
+        self,
+        school_records: list[dict[str, Any]],
+        configured_urls: Any,
+    ) -> list[tuple[str, str]]:
+        resolved_by_type: dict[str, str] = {}
+        fallback_url = ""
+        for item in school_records:
+            raw_url = str(item.get("source_url", "")).strip()
+            if not raw_url:
+                continue
+            page_type = str(item.get("page_type", "")).strip().lower()
+            if page_type in {"requirements", "deadline"} and page_type not in resolved_by_type:
+                resolved_by_type[page_type] = raw_url
+            if not fallback_url:
+                fallback_url = raw_url
+        if isinstance(configured_urls, dict):
+            for page_type in ("requirements", "deadline"):
+                raw_configured = configured_urls.get(page_type, "")
+                configured = str(raw_configured).strip()
+                if configured and page_type not in resolved_by_type:
+                    resolved_by_type[page_type] = configured
+        if resolved_by_type.get("requirements") and resolved_by_type.get("deadline"):
+            requirements_url = resolved_by_type["requirements"]
+            deadline_url = resolved_by_type["deadline"]
+            if requirements_url == deadline_url:
+                return [("official", requirements_url)]
+            return [("requirements", requirements_url), ("deadline", deadline_url)]
+        if resolved_by_type.get("requirements"):
+            return [("requirements", resolved_by_type["requirements"])]
+        if resolved_by_type.get("deadline"):
+            return [("deadline", resolved_by_type["deadline"])]
+        if fallback_url:
+            return [("official", fallback_url)]
+        return []
+
+    def _truncate_text(self, text: str, limit: int) -> str:
+        if len(text) <= limit:
+            return text
+        return f"{text[: limit - 3].rstrip()}..."

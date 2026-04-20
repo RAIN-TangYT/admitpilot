@@ -173,8 +173,8 @@ OPENAI_TIMEOUT_SECONDS=30
   - AIE live 能稳定抓到 `requirements + deadline` 两类官方页，并写入官方库
 - `部分支持`
   - AIE live 只能稳定抓到其中一类官方页，当前结果通常是 `mixed`
-- `不支持`
-  - 当前没有 live 官方源配置，或现有抓取器无法稳定拿到可解析官方页
+- `仅 URL 支持`
+  - 已配置项目级真实官网 URL，并写入官方库 `source_urls`，但当前 live 抓取尚未拿到可解析页面（通常是 `predicted`）
 
 本轮实际执行命令：
 
@@ -235,10 +235,11 @@ python -m admitpilot.debug.refresh_official_library --cycle 2026
 
 - `部分支持` 代表当前 live 执行能抓到部分官方页，但还不能稳定形成完整的 `requirements + deadline` 双页快照。
 
-### 7.3 不支持
+### 7.3 仅 URL 支持
 
-- `NUS`
+- `HKUST`
   - `MSCS`
+- `NUS`
   - `MSAI`
   - `MSBA`
   - `MTECH_AIS`
@@ -250,13 +251,11 @@ python -m admitpilot.debug.refresh_official_library --cycle 2026
   - `EM_AIDT`
 - `NTU`
   - `MSCS`
-- `HKUST`
-  - `MSCS`
 
 说明：
 
-- `NUS/NTU/HKUST` 下的 `MSCS` 属于历史兼容代码，当前 live 运行不再把它们作为默认真实项目入口。
-- 部分 `NUS` 项目官网页面虽然存在，但当前 `httpx` 抓取路径会被站点反爬或挑战页拦截，因此暂未纳入 live 官方源。
+- 以上项目均已配置真实官网 URL（`requirements/deadline`）并写入官方库快照。
+- 当前抓取器在部分站点上仍会遇到挑战页/结构不稳定，导致暂时无法稳定形成可解析记录。
 
 ## 8. 当前质量状态
 
@@ -273,11 +272,12 @@ python -m admitpilot.main
 
 说明：
 - 仍可能出现 `.pytest_cache` 权限 warning，这属于本地目录权限问题，不影响当前代码正确性
+- `2026-04-20` 已补齐 `tests/fixtures/official_pages/invalid_mscs_2026_deadline.html`，当前全量 `pytest` 可通过
 
 ## 9. 当前已知限制
 
 - AIE 运行时默认读取官方库；`fixture` 仅保留给测试使用
-- AIE live 还不能覆盖全部目录项目，尤其是部分 `NUS` 项目仍受官网反爬影响
+- AIE live 已覆盖全部目录项目的 URL 配置，但仍不能对全部项目稳定抓到并结构化解析官方页
 - SAE 仍是示意性评分框架
 - DTA 仍是规则化排期，不是完整调度器
 - CDS 仍是支持包生成器，不是最终文书定稿器
