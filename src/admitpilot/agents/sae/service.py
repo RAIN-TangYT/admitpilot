@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from admitpilot.agents.sae.rules import ProgramRule, load_program_rules
+from admitpilot.agents.sae.scoring import RuleScoreResult, RuleScorer
 from admitpilot.agents.sae.schemas import ProgramRecommendation, StrategicReport
+from admitpilot.agents.sae.semantic import (
+    SemanticMatcher,
+    SemanticMatchResult,
+    build_semantic_matcher,
+)
 from admitpilot.core.schemas import AIEAgentOutput, UserProfile
 
 
@@ -11,6 +20,18 @@ class StrategicAdmissionsService:
 
     SUPPORTED_SCHOOLS = ("NUS", "NTU", "HKU", "CUHK", "HKUST")
     MODEL_BREAKDOWN = {"rule": 0.45, "semantic": 0.35, "risk": 0.20}
+    _DEFAULT_RULES_DIR = Path(__file__).resolve().parents[4] / "data" / "program_rules"
+
+    def __init__(
+        self,
+        rules: dict[str, ProgramRule] | None = None,
+        semantic_matcher: SemanticMatcher | None = None,
+    ) -> None:
+        self.rules = rules if rules is not None else load_program_rules(self._DEFAULT_RULES_DIR)
+        self.rule_scorer = RuleScorer()
+        self.semantic_matcher: SemanticMatcher = (
+            semantic_matcher if semantic_matcher is not None else build_semantic_matcher("fake")
+        )
 
     def evaluate(self, user_profile: UserProfile, intelligence: AIEAgentOutput) -> StrategicReport:
         """输出分层推荐、优劣势和差距分析。"""
@@ -67,14 +88,19 @@ class StrategicAdmissionsService:
         user_profile: UserProfile,
         intelligence: AIEAgentOutput,
     ) -> ProgramRecommendation:
-        rule_score = self._rule_match_score(
-            user_profile=user_profile, intelligence=intelligence, school=school
-        )
-        semantic_score = self._semantic_match_score(
+        rule = self.rules.get(f"{school}:{target_program}")
+        rule_result = self.rule_scorer.score(
             user_profile=user_profile,
-            target_program=target_program,
+            intelligence=intelligence,
             school=school,
+            program=target_program,
+            rule=rule,
         )
+        rule_score = rule_result.score
+        semantic_result = self.semantic_matcher.match(
+            user_profile, school=school, program=target_program
+        )
+        semantic_score = semantic_result.score
         risk_score = self._risk_score(intelligence=intelligence, school=school)
         overall_score = (
             self.MODEL_BREAKDOWN["rule"] * rule_score
@@ -82,6 +108,16 @@ class StrategicAdmissionsService:
             + self.MODEL_BREAKDOWN["risk"] * (1 - risk_score)
         )
         tier = self._tier_from_score(overall_score=overall_score)
+        evidence, gaps, risk_flags, missing_inputs = self._build_explanation_fields(
+            school=school,
+            target_program=target_program,
+            user_profile=user_profile,
+            intelligence=intelligence,
+            rule=rule,
+            rule_result=rule_result,
+            semantic_result=semantic_result,
+            tier=tier,
+        )
         return ProgramRecommendation(
             school=school,
             program=target_program,
@@ -95,40 +131,78 @@ class StrategicAdmissionsService:
                 rule_score=rule_score,
                 semantic_score=semantic_score,
                 risk_score=risk_score,
+                rule_notes=rule_result.notes,
+                tier=tier,
             ),
+            rule_breakdown=rule_result.breakdown,
+            rule_notes=rule_result.notes,
+            evidence=evidence,
+            gaps=gaps,
+            risk_flags=risk_flags,
+            missing_inputs=missing_inputs,
+            semantic_breakdown=dict(semantic_result.breakdown),
         )
 
-    def _rule_match_score(
-        self, user_profile: UserProfile, intelligence: AIEAgentOutput, school: str
-    ) -> float:
-        """规则匹配打分骨架。
-
-        TODO: 接入可配置规则引擎（GPA/语言/先修课/硬门槛）。
-        """
-        gpa = float(user_profile.academic_metrics.get("gpa", 3.5))
-        lang = float(user_profile.language_scores.get("ielts", 7.0))
-        base = min(1.0, (gpa / 4.0) * 0.7 + (lang / 9.0) * 0.3)
+    def _build_explanation_fields(
+        self,
+        school: str,
+        target_program: str,
+        user_profile: UserProfile,
+        intelligence: AIEAgentOutput,
+        rule: ProgramRule | None,
+        rule_result: RuleScoreResult,
+        semantic_result: SemanticMatchResult,
+        tier: str,
+    ) -> tuple[list[str], list[str], list[str], list[str]]:
+        evidence: list[str] = []
+        gaps: list[str] = []
+        risk_flags: list[str] = []
+        missing_inputs: list[str] = []
         status = intelligence.get("official_status_by_school", {}).get(school, "predicted")
+        evidence.append(f"AIE:official_status_by_school[{school}]={status}")
+        ev_level = intelligence.get("evidence_levels", {}).get(school)
+        if ev_level:
+            evidence.append(f"AIE:evidence_levels[{school}]={ev_level}")
+        if intelligence.get("prediction_used"):
+            evidence.append("AIE:prediction_used=true")
+        for key, value in rule_result.breakdown.items():
+            if key != "final":
+                evidence.append(f"rule_breakdown:{key}={value}")
+        if rule_result.notes:
+            evidence.append(f"rule_notes:{','.join(rule_result.notes)}")
+
+        method = semantic_result.breakdown.get("method", "semantic")
+        evidence.append(f"semantic:method={method},score={semantic_result.score:.3f}")
+        matched = semantic_result.breakdown.get("matched_keywords")
+        if isinstance(matched, list) and matched:
+            evidence.append(f"semantic:matched_keywords={','.join(str(x) for x in matched)}")
+
+        evidence.append(f"tier={tier} from overall_score pipeline")
+
+        if "hard_gpa_gap" in rule_result.notes:
+            gaps.append("GPA 低于该项目规则硬门槛，需要提分或补充学术证明")
+        if "hard_ielts_gap" in rule_result.notes or "missing_ielts" in rule_result.notes:
+            gaps.append("语言成绩未达到规则要求或未提供")
+        if "background_mismatch" in rule_result.notes:
+            gaps.append("经历/专业叙事与规则推荐背景关键词对齐不足")
+        if "missing_rule_file" in rule_result.notes:
+            gaps.append(f"缺少 {school}:{target_program} 的 YAML 规则文件，规则分使用保守回退")
+
+        if rule is not None:
+            risk_flags.extend(rule.risk_flags)
         if status != "official_found":
-            base -= 0.05
-        return max(0.0, min(base, 1.0))
+            risk_flags.append("official_incomplete")
+        if intelligence.get("prediction_used"):
+            risk_flags.append("upstream_prediction_used")
 
-    def _semantic_match_score(
-        self, user_profile: UserProfile, target_program: str, school: str
-    ) -> float:
-        """语义匹配打分骨架。
+        if not user_profile.language_scores:
+            missing_inputs.append("language_scores")
+        if not user_profile.academic_metrics.get("gpa"):
+            missing_inputs.append("gpa")
+        if not user_profile.experiences:
+            missing_inputs.append("experiences")
 
-        TODO: 用 embedding 检索与课程语义匹配替换该占位逻辑。
-        """
-        profile_signal = (
-            f"{user_profile.major_interest} {' '.join(user_profile.experiences)}".lower()
-        )
-        school_signal = f"{school} {target_program}".lower()
-        overlap = sum(
-            1 for token in ("cs", "ai", "data", "system", "research") if token in profile_signal
-        )
-        school_bias = 0.05 if "hku" in school_signal else 0.0
-        return max(0.25, min(0.9, 0.35 + overlap * 0.08 + school_bias))
+        return evidence, gaps, risk_flags, missing_inputs
 
     def _risk_score(self, intelligence: AIEAgentOutput, school: str) -> float:
         """风险打分骨架，数值越高风险越高。"""
@@ -146,10 +220,19 @@ class StrategicAdmissionsService:
         return "safety"
 
     def _build_reasons(
-        self, school: str, rule_score: float, semantic_score: float, risk_score: float
+        self,
+        school: str,
+        rule_score: float,
+        semantic_score: float,
+        risk_score: float,
+        rule_notes: list[str],
+        tier: str,
     ) -> list[str]:
+        notes = f"规则命中={','.join(rule_notes)}" if rule_notes else "规则命中=baseline"
         return [
+            f"{school} tier={tier}（overall=0.45*rule+0.35*semantic+0.20*(1-risk)）",
             f"{school} 规则匹配得分={rule_score:.2f}",
+            notes,
             f"语义契合得分={semantic_score:.2f}",
             f"风险评估得分={risk_score:.2f}",
         ]
@@ -181,3 +264,4 @@ class StrategicAdmissionsService:
         if any(item.tier == "reach" for item in recommendations):
             actions.append("为冲刺项目准备替代叙事版本与推荐顺序预案")
         return actions
+

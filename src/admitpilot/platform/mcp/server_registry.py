@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
-@dataclass(slots=True)
+@dataclass
 class MCPServerRegistry:
     """Track MCP servers and method registrations."""
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import traceback
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any, Optional, cast
 from uuid import uuid4
 
 from langgraph.graph import END, START, StateGraph
@@ -37,13 +37,13 @@ from admitpilot.platform import PlatformCommonBundle, build_default_platform_com
 from admitpilot.platform.runtime import RuntimeStateMachine, TaskStatus, WorkflowStatus
 
 
-@dataclass(slots=True)
+@dataclass
 class PrincipalApplicationOrchestrator:
     """PAO：统一负责意图识别、路由、上下文与结果聚合。"""
 
     router: IntentRouter = field(default_factory=IntentRouter)
     agents: dict[str, BaseAgent] = field(default_factory=dict)
-    platform_bundle: PlatformCommonBundle | None = None
+    platform_bundle: Optional[PlatformCommonBundle] = None
     _graph: Any = field(init=False, repr=False)
     _workflow_state_machine: RuntimeStateMachine = field(init=False, repr=False)
 
@@ -195,53 +195,6 @@ class PrincipalApplicationOrchestrator:
                 event="task_dispatched",
                 details={"agent": task.agent, "task": task.name, "trace_id": trace_id},
             )
-            if not self.platform_bundle.capability_manager.allowed_agent(task.agent):
-                result = self._build_failed_result(
-                    task=task,
-                    agent_name=task.agent,
-                    reason="capability_denied",
-                    message=f"agent {task.agent} not allowed by policy",
-                )
-                results = [*state["results"], result]
-                self.platform_bundle.trace_collector.end_span(
-                    name=f"agent.{task.agent}.run",
-                    trace_id=trace_id,
-                    attrs={"status": result.status.value},
-                )
-                return {
-                    **state,
-                    "workflow_status": workflow_status,
-                    "pending_tasks": pending_tasks,
-                    "current_task": task,
-                    "results": results,
-                    "context": context,
-                }
-            token = self.platform_bundle.capability_manager.issue(
-                principal=task.agent, scopes={"execute"}
-            )
-            if not self.platform_bundle.capability_manager.validate(
-                token=token, required_scope="execute"
-            ):
-                result = self._build_failed_result(
-                    task=task,
-                    agent_name=task.agent,
-                    reason="capability_denied",
-                    message=f"token rejected for agent {task.agent}",
-                )
-                results = [*state["results"], result]
-                self.platform_bundle.trace_collector.end_span(
-                    name=f"agent.{task.agent}.run",
-                    trace_id=trace_id,
-                    attrs={"status": result.status.value},
-                )
-                return {
-                    **state,
-                    "workflow_status": workflow_status,
-                    "pending_tasks": pending_tasks,
-                    "current_task": task,
-                    "results": results,
-                    "context": context,
-                }
         agent = self.agents.get(task.agent)
         if agent is None:
             result = self._build_failed_result(
@@ -251,6 +204,54 @@ class PrincipalApplicationOrchestrator:
                 message=f"未注册代理: {task.agent}",
             )
         else:
+            if self.platform_bundle is not None:
+                if not self.platform_bundle.capability_manager.allowed_agent(task.agent):
+                    result = self._build_failed_result(
+                        task=task,
+                        agent_name=task.agent,
+                        reason="capability_denied",
+                        message=f"agent {task.agent} not allowed by policy",
+                    )
+                    results = [*state["results"], result]
+                    self.platform_bundle.trace_collector.end_span(
+                        name=f"agent.{task.agent}.run",
+                        trace_id=trace_id,
+                        attrs={"status": result.status.value},
+                    )
+                    return {
+                        **state,
+                        "workflow_status": workflow_status,
+                        "pending_tasks": pending_tasks,
+                        "current_task": task,
+                        "results": results,
+                        "context": context,
+                    }
+                token = self.platform_bundle.capability_manager.issue(
+                    principal=task.agent, scopes={"execute"}
+                )
+                if not self.platform_bundle.capability_manager.validate(
+                    token=token, required_scope="execute"
+                ):
+                    result = self._build_failed_result(
+                        task=task,
+                        agent_name=task.agent,
+                        reason="capability_denied",
+                        message=f"token rejected for agent {task.agent}",
+                    )
+                    results = [*state["results"], result]
+                    self.platform_bundle.trace_collector.end_span(
+                        name=f"agent.{task.agent}.run",
+                        trace_id=trace_id,
+                        attrs={"status": result.status.value},
+                    )
+                    return {
+                        **state,
+                        "workflow_status": workflow_status,
+                        "pending_tasks": pending_tasks,
+                        "current_task": task,
+                        "results": results,
+                        "context": context,
+                    }
             try:
                 result = agent.run(task=task, context=context)
             except Exception as exc:
@@ -412,7 +413,7 @@ class PrincipalApplicationOrchestrator:
         agent_name: str,
         reason: str,
         message: str,
-        trace: list[str] | None = None,
+        trace: Optional[list[str]] = None,
     ) -> AgentResult:
         """生成失败任务结果。"""
         return AgentResult(

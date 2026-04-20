@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any
 
 
-@dataclass(slots=True)
+@dataclass
 class GovernanceEngine:
     """Simple policy gate and audit trail."""
 

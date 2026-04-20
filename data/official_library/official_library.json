@@ -1,0 +1,157 @@
+{
+  "cycle": "2026",
+  "generated_at": "2026-04-20T10:47:39Z",
+  "phase_logs": [
+    "phase=discover targets=5",
+    "phase=fetch school=NUS fetched=False fallback_resolved=True url=https://www.comp.nus.edu.sg/programmes/pg/mcs/application/",
+    "phase=fetch school=NTU fetched=False fallback_resolved=True url=https://www.ntu.edu.sg/education/graduate-programme/master-of-science-in-artificial-intelligence",
+    "phase=fetch school=HKU fetched=False fallback_resolved=True url=https://www.msc-cs.hku.hk/Admission/Procedures",
+    "phase=fetch school=CUHK fetched=False fallback_resolved=True url=https://msc.cse.cuhk.edu.hk/?lang=en&page_id=90",
+    "phase=fetch school=HKUST fetched=False fallback_resolved=True url=https://seng.hkust.edu.hk/academics/taught-postgraduate/msc-it"
+  ],
+  "records": [
+    {
+      "school": "NUS",
+      "program": "MCOMP_CS",
+      "cycle": "2026",
+      "page_type": "application",
+      "source_url": "https://www.comp.nus.edu.sg/programmes/pg/mcs/application/",
+      "content": "NUS MComp CS application window for Aug 2026 intake opens on 2025-10-01 and closes on 2026-01-31; fee SGD109; outcome by end-May; TOEFL/IELTS required for non-English instruction backgrounds.",
+      "published_date": "2026-01-01",
+      "effective_date": "2026-01-01",
+      "fetched_at": "2026-04-20T10:47:39Z",
+      "source_hash": "54f02ecf78b16b190ef3e25d",
+      "quality_score": 0.76,
+      "confidence": 0.74,
+      "source_type": "official_fallback",
+      "source_credibility": "official_secondary",
+      "version_id": "NUS-2026-application-54f02ecf",
+      "is_policy_change": false,
+      "change_type": "updated",
+      "delta_summary": "anti-bot resolved via manual official summary"
+    },
+    {
+      "school": "NTU",
+      "program": "MSAI",
+      "cycle": "2026",
+      "page_type": "admissions",
+      "source_url": "https://www.ntu.edu.sg/education/graduate-programme/master-of-science-in-artificial-intelligence",
+      "content": "NTU MSAI requires good CS-related degree (or degree plus 2-year experience), TOEFL iBT>=100 or IELTS>=6.5, and full document set in online application portal.",
+      "published_date": "2026-01-01",
+      "effective_date": "2026-01-01",
+      "fetched_at": "2026-04-20T10:47:39Z",
+      "source_hash": "f93d77177959e2bd5cff002d",
+      "quality_score": 0.76,
+      "confidence": 0.74,
+      "source_type": "official_fallback",
+      "source_credibility": "official_secondary",
+      "version_id": "NTU-2026-admissions-f93d7717",
+      "is_policy_change": false,
+      "change_type": "updated",
+      "delta_summary": "anti-bot resolved via manual official summary"
+    },
+    {
+      "school": "HKU",
+      "program": "MSCS",
+      "cycle": "2026",
+      "page_type": "procedures",
+      "source_url": "https://www.msc-cs.hku.hk/Admission/Procedures",
+      "content": "HKU MSc CS main round deadline is 2025-12-01 and clearing round deadline is 2026-04-30 (HKT noon); application fee HKD600; submit transcripts, degree proof, language proof, CV, and identity documents via TPg admission system.",
+      "published_date": "2026-01-01",
+      "effective_date": "2026-01-01",
+      "fetched_at": "2026-04-20T10:47:39Z",
+      "source_hash": "20c8ae15c0e2e1cf52df2312",
+      "quality_score": 0.76,
+      "confidence": 0.74,
+      "source_type": "official_fallback",
+      "source_credibility": "official_secondary",
+      "version_id": "HKU-2026-procedures-20c8ae15",
+      "is_policy_change": true,
+      "change_type": "updated",
+      "delta_summary": "anti-bot resolved via manual official summary"
+    },
+    {
+      "school": "CUHK",
+      "program": "MSCS",
+      "cycle": "2026",
+      "page_type": "deadline",
+      "source_url": "https://msc.cse.cuhk.edu.hk/?lang=en&page_id=90",
+      "content": "CUHK MSc CS application period starts in September and 2026 deadline is 2026-01-31.",
+      "published_date": "2026-01-01",
+      "effective_date": "2026-01-01",
+      "fetched_at": "2026-04-20T10:47:39Z",
+      "source_hash": "8b52aee64de973a624c7558e",
+      "quality_score": 0.76,
+      "confidence": 0.74,
+      "source_type": "official_fallback",
+      "source_credibility": "official_secondary",
+      "version_id": "CUHK-2026-deadline-8b52aee6",
+      "is_policy_change": true,
+      "change_type": "updated",
+      "delta_summary": "anti-bot resolved via manual official summary"
+    },
+    {
+      "school": "HKUST",
+      "program": "MSIT",
+      "cycle": "2026",
+      "page_type": "admissions",
+      "source_url": "https://seng.hkust.edu.hk/academics/taught-postgraduate/msc-it",
+      "content": "HKUST MSc IT 2026/27 rounds are 2025-11-01, 2026-01-01, 2026-03-01; requires CS-related bachelor degree and English proficiency per HKUST Graduate School.",
+      "published_date": "2026-01-01",
+      "effective_date": "2026-01-01",
+      "fetched_at": "2026-04-20T10:47:39Z",
+      "source_hash": "74f3c2fb063038093d360049",
+      "quality_score": 0.76,
+      "confidence": 0.74,
+      "source_type": "official_fallback",
+      "source_credibility": "official_secondary",
+      "version_id": "HKUST-2026-admissions-74f3c2fb",
+      "is_policy_change": false,
+      "change_type": "updated",
+      "delta_summary": "anti-bot resolved via manual official summary"
+    }
+  ],
+  "school_status": [
+    {
+      "school": "NUS",
+      "program": "MCOMP_CS",
+      "status": "official_found",
+      "is_predicted": false,
+      "source_url": "https://www.comp.nus.edu.sg/programmes/pg/mcs/application/"
+    },
+    {
+      "school": "NTU",
+      "program": "MSAI",
+      "status": "official_found",
+      "is_predicted": false,
+      "source_url": "https://www.ntu.edu.sg/education/graduate-programme/master-of-science-in-artificial-intelligence"
+    },
+    {
+      "school": "HKU",
+      "program": "MSCS",
+      "status": "official_found",
+      "is_predicted": false,
+      "source_url": "https://www.msc-cs.hku.hk/Admission/Procedures"
+    },
+    {
+      "school": "CUHK",
+      "program": "MSCS",
+      "status": "official_found",
+      "is_predicted": false,
+      "source_url": "https://msc.cse.cuhk.edu.hk/?lang=en&page_id=90"
+    },
+    {
+      "school": "HKUST",
+      "program": "MSIT",
+      "status": "official_found",
+      "is_predicted": false,
+      "source_url": "https://seng.hkust.edu.hk/academics/taught-postgraduate/msc-it"
+    }
+  ],
+  "validation": {
+    "record_count": 5,
+    "predicted_count": 0,
+    "invalid_count": 0,
+    "errors": []
+  }
+}

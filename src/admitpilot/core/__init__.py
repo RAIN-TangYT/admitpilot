@@ -6,10 +6,13 @@ from admitpilot.core.schemas import (
     ApplicationContext,
     UserProfile,
 )
+from admitpilot.core.user_artifacts import EvidenceArtifact, UserArtifactsBundle
 
 __all__ = [
     "AgentResult",
     "AgentTask",
     "ApplicationContext",
     "UserProfile",
+    "EvidenceArtifact",
+    "UserArtifactsBundle",
 ]

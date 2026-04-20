@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional
 
 from admitpilot.core.schemas import AgentResult, ApplicationContext, UserProfile
 
 
-@dataclass(slots=True)
+@dataclass
 class OrchestrationRequest:
     """编排层输入请求。"""
 
@@ -17,10 +17,10 @@ class OrchestrationRequest:
     constraints: dict[str, Any] = field(default_factory=dict)
 
 
-@dataclass(slots=True)
+@dataclass
 class OrchestrationResponse:
     """编排层输出响应。"""
 
     summary: str
     results: list[AgentResult] = field(default_factory=list)
-    context: ApplicationContext | None = None
+    context: Optional[ApplicationContext] = None

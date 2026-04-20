@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 
-@dataclass(slots=True)
+@dataclass
 class MemoryRecord:
     """Memory item with metadata and versioning."""
 

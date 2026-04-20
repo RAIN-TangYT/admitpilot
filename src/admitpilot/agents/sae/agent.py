@@ -65,6 +65,13 @@ class SAEAgent(BaseAgent):
                     "risk_score": item.risk_score,
                     "overall_score": item.overall_score,
                     "reasons": item.reasons,
+                    "rule_breakdown": item.rule_breakdown,
+                    "rule_notes": item.rule_notes,
+                    "evidence": item.evidence,
+                    "gaps": item.gaps,
+                    "risk_flags": item.risk_flags,
+                    "missing_inputs": item.missing_inputs,
+                    "semantic_breakdown": item.semantic_breakdown,
                 }
                 for item in report.recommendations
             ],
