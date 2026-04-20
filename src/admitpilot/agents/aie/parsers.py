@@ -250,17 +250,20 @@ class OfficialPageParser:
     def _extract_language_requirements(self, text: str) -> list[str]:
         requirements: list[str] = []
         for match in re.finditer(
-            r"\bIELTS\b[^0-9]{0,40}(\d(?:\.\d)?)",
+            r"\bIELTS\b[^0-9]{0,40}(?<!\d)(\d(?:\.\d)?)(?!\d)",
             text,
             flags=re.IGNORECASE,
         ):
             requirements.append(f"IELTS {match.group(1)}")
-        for match in re.finditer(
-            r"\bTOEFL(?:-iBT|-IBT)?\b[^0-9]{0,40}(\d{2,3})",
-            text,
-            flags=re.IGNORECASE,
-        ):
-            requirements.append(f"TOEFL {match.group(1)}")
+        # Parse TOEFL scores from a local window and ignore institution codes
+        # (e.g. 4-digit reporting codes like 9087).
+        for marker in re.finditer(r"\bTOEFL(?:-iBT|-IBT)?\b", text, flags=re.IGNORECASE):
+            window = text[marker.end() : marker.end() + 180]
+            for score_match in re.finditer(r"(?<!\d)(\d{2,3})(?!\d)", window):
+                score = int(score_match.group(1))
+                if 60 <= score <= 677:
+                    requirements.append(f"TOEFL {score}")
+                    break
         return self._dedupe_preserve_order(requirements)
 
     def _extract_required_materials(self, lowered_text: str) -> list[str]:

@@ -35,6 +35,8 @@ class AIEAgentOutput(TypedDict):
     target_schools: list[str]
     target_program: str
     target_program_by_school: NotRequired[dict[str, str]]
+    unsupported_program_by_school: NotRequired[dict[str, str]]
+    official_source_urls_by_school: NotRequired[dict[str, dict[str, str]]]
     official_status_by_school: dict[str, str]
     official_records: list[dict[str, Any]]
     case_records: list[dict[str, Any]]

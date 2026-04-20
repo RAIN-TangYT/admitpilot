@@ -91,3 +91,36 @@ def test_official_parser_decodes_entities_and_curly_quotes() -> None:
     )
     assert "IELTS 6.0" in record.extracted_fields["language_requirements"]
     assert "TOEFL 85" in record.extracted_fields["language_requirements"]
+
+
+def test_official_parser_ignores_toefl_reporting_code_when_extracting_score() -> None:
+    parser = OfficialPageParser()
+    spec = OfficialPageSpec(
+        school="NUS",
+        program="MCOMP_CS",
+        cycle="2026",
+        page_type="requirements",
+        url="https://www.comp.nus.edu.sg/programmes/pg/mcs/admissions/",
+        allowed_domains=("comp.nus.edu.sg",),
+    )
+    page = FetchedOfficialPage(
+        spec=spec,
+        content=(
+            "<html><body>"
+            "<p>English requirement: IELTS 6.0 (with no band below IELTS 5.0) "
+            "or TOEFL iBT 90.</p>"
+            "<p>Institution code for TOEFL reporting is 9087.</p>"
+            "</body></html>"
+        ),
+        fetched_at=utc_now(),
+        status_code=200,
+        content_type="text/html",
+        mode="live",
+    )
+
+    record = parser.parse(page)
+
+    assert "IELTS 6.0" in record.extracted_fields["language_requirements"]
+    assert "IELTS 5.0" in record.extracted_fields["language_requirements"]
+    assert "TOEFL 90" in record.extracted_fields["language_requirements"]
+    assert "TOEFL 908" not in record.extracted_fields["language_requirements"]

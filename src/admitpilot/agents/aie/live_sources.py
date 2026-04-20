@@ -84,6 +84,12 @@ DEFAULT_LIVE_OFFICIAL_SOURCES: tuple[OfficialLiveSourceConfig, ...] = (
     ),
     OfficialLiveSourceConfig(
         school="HKUST",
+        program="MSCS",
+        requirements_url="https://seng.hkust.edu.hk/academics/taught-postgraduate",
+        deadline_url="https://seng.hkust.edu.hk/academics/taught-postgraduate/faq",
+    ),
+    OfficialLiveSourceConfig(
+        school="HKUST",
         program="MSAI",
         requirements_url="https://seng.hkust.edu.hk/academics/taught-postgraduate/msc-ai",
         deadline_url="https://seng.hkust.edu.hk/academics/taught-postgraduate/msc-ai",
@@ -108,6 +114,24 @@ DEFAULT_LIVE_OFFICIAL_SOURCES: tuple[OfficialLiveSourceConfig, ...] = (
     ),
     # NUS live mode is limited to pages the current httpx-based fetcher can read
     # without JS execution or anti-bot challenges.
+    OfficialLiveSourceConfig(
+        school="NUS",
+        program="MSCS",
+        requirements_url="https://www.comp.nus.edu.sg/programmes/pg/mcs/admissions/",
+        deadline_url="https://www.comp.nus.edu.sg/programmes/pg/mcs/application/",
+    ),
+    OfficialLiveSourceConfig(
+        school="NUS",
+        program="MSAI",
+        requirements_url=(
+            "https://masters.nus.edu.sg/programmes/"
+            "master-of-science-%28artificial-intelligence-and-innovation%29"
+        ),
+        deadline_url=(
+            "https://masters.nus.edu.sg/programmes/"
+            "master-of-science-%28artificial-intelligence-and-innovation%29"
+        ),
+    ),
     OfficialLiveSourceConfig(
         school="NUS",
         program="MCOMP_CS",
@@ -143,6 +167,104 @@ DEFAULT_LIVE_OFFICIAL_SOURCES: tuple[OfficialLiveSourceConfig, ...] = (
         program="MSDFT",
         requirements_url="https://www.comp.nus.edu.sg/programmes/pg/mdft/admissions/",
         deadline_url="https://www.comp.nus.edu.sg/programmes/pg/mdft/application/",
+    ),
+    OfficialLiveSourceConfig(
+        school="NUS",
+        program="MSBA",
+        requirements_url=(
+            "https://masters.nus.edu.sg/programmes/master-of-science-in-business-analytics"
+        ),
+        deadline_url=(
+            "https://masters.nus.edu.sg/programmes/master-of-science-in-business-analytics"
+        ),
+    ),
+    OfficialLiveSourceConfig(
+        school="NUS",
+        program="MTECH_AIS",
+        requirements_url=(
+            "https://www.iss.nus.edu.sg/graduate-programmes/programme/detail/"
+            "master-of-technology-in-artificial-intelligence-systems"
+        ),
+        deadline_url=(
+            "https://www.iss.nus.edu.sg/graduate-programmes/programme/detail/"
+            "master-of-technology-in-artificial-intelligence-systems"
+        ),
+    ),
+    OfficialLiveSourceConfig(
+        school="NUS",
+        program="MTECH_SE",
+        requirements_url=(
+            "https://www.iss.nus.edu.sg/graduate-programmes/programme/detail/"
+            "master-of-technology-in-software-engineering"
+        ),
+        deadline_url=(
+            "https://www.iss.nus.edu.sg/graduate-programmes/programme/detail/"
+            "master-of-technology-in-software-engineering"
+        ),
+    ),
+    OfficialLiveSourceConfig(
+        school="NUS",
+        program="MTECH_EBA",
+        requirements_url=(
+            "https://www.iss.nus.edu.sg/graduate-programmes/programme/detail/"
+            "master-of-technology-in-enterprise-business-analytics"
+        ),
+        deadline_url=(
+            "https://www.iss.nus.edu.sg/graduate-programmes/programme/detail/"
+            "master-of-technology-in-enterprise-business-analytics"
+        ),
+    ),
+    OfficialLiveSourceConfig(
+        school="NUS",
+        program="MTECH_DL",
+        requirements_url=(
+            "https://www.iss.nus.edu.sg/graduate-programmes/programme/detail/"
+            "master-of-technology-in-digital-leadership"
+        ),
+        deadline_url=(
+            "https://www.iss.nus.edu.sg/graduate-programmes/programme/detail/"
+            "master-of-technology-in-digital-leadership"
+        ),
+    ),
+    OfficialLiveSourceConfig(
+        school="NUS",
+        program="MS_AIFS",
+        requirements_url=(
+            "https://www.nus.edu.sg/nusbulletin/ay202526/programmes/faculty-of-science/"
+            "graduate-education/coursework-programmes/curriculum-structure/"
+        ),
+        deadline_url=(
+            "https://www.nus.edu.sg/nusbulletin/ay202526/programmes/faculty-of-science/"
+            "graduate-education/coursework-programmes/curriculum-structure/"
+        ),
+    ),
+    OfficialLiveSourceConfig(
+        school="NUS",
+        program="MS_AII",
+        requirements_url=(
+            "https://masters.nus.edu.sg/programmes/"
+            "master-of-science-%28artificial-intelligence-and-innovation%29"
+        ),
+        deadline_url=(
+            "https://masters.nus.edu.sg/programmes/"
+            "master-of-science-%28artificial-intelligence-and-innovation%29"
+        ),
+    ),
+    OfficialLiveSourceConfig(
+        school="NUS",
+        program="EM_AIDT",
+        requirements_url=(
+            "https://www.aidf.nus.edu.sg/executive-master-in-ai-and-digital-transformation/"
+        ),
+        deadline_url=(
+            "https://www.aidf.nus.edu.sg/executive-master-in-ai-and-digital-transformation/"
+        ),
+    ),
+    OfficialLiveSourceConfig(
+        school="NTU",
+        program="MSCS",
+        requirements_url="https://www.ntu.edu.sg/computing/admissions/graduate-programmes",
+        deadline_url="https://www.ntu.edu.sg/computing/admissions/graduate-programmes",
     ),
     OfficialLiveSourceConfig(
         school="NTU",
@@ -205,3 +327,17 @@ DEFAULT_LIVE_OFFICIAL_SOURCES: tuple[OfficialLiveSourceConfig, ...] = (
         ),
     ),
 )
+
+
+def build_live_source_url_map(
+    live_sources: tuple[OfficialLiveSourceConfig, ...] = DEFAULT_LIVE_OFFICIAL_SOURCES,
+) -> dict[tuple[str, str], dict[str, str]]:
+    """Build a normalized source-url lookup keyed by (school, program)."""
+
+    mapping: dict[tuple[str, str], dict[str, str]] = {}
+    for item in live_sources:
+        mapping[(item.school, item.program)] = {
+            "requirements": item.requirements_url,
+            "deadline": item.deadline_url,
+        }
+    return mapping
