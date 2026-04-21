@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
+from admitpilot.agents.sae.prompts import SYSTEM_PROMPT
 from admitpilot.agents.sae.rules import ProgramRule, load_program_rules
 from admitpilot.agents.sae.scoring import RuleScoreResult, RuleScorer
 from admitpilot.agents.sae.schemas import ProgramRecommendation, StrategicReport
@@ -13,20 +15,25 @@ from admitpilot.agents.sae.semantic import (
     build_semantic_matcher,
 )
 from admitpilot.core.schemas import AIEAgentOutput, UserProfile
+from admitpilot.domain.catalog import DEFAULT_ADMISSIONS_CATALOG, AdmissionsCatalog
+from admitpilot.platform.llm.openai import OpenAIClient
 
 
 class StrategicAdmissionsService:
     """负责候选项目评估与风险排序。"""
 
-    SUPPORTED_SCHOOLS = ("NUS", "NTU", "HKU", "CUHK", "HKUST")
     MODEL_BREAKDOWN = {"rule": 0.45, "semantic": 0.35, "risk": 0.20}
     _DEFAULT_RULES_DIR = Path(__file__).resolve().parents[4] / "data" / "program_rules"
 
     def __init__(
         self,
+        llm_client: OpenAIClient | None = None,
+        catalog: AdmissionsCatalog = DEFAULT_ADMISSIONS_CATALOG,
         rules: dict[str, ProgramRule] | None = None,
         semantic_matcher: SemanticMatcher | None = None,
     ) -> None:
+        self.llm_client = llm_client or OpenAIClient()
+        self.catalog = catalog
         self.rules = rules if rules is not None else load_program_rules(self._DEFAULT_RULES_DIR)
         self.rule_scorer = RuleScorer()
         self.semantic_matcher: SemanticMatcher = (
@@ -38,11 +45,15 @@ class StrategicAdmissionsService:
         target_schools = self._resolve_target_schools(
             intelligence=intelligence, user_profile=user_profile
         )
-        target_program = intelligence.get("target_program", user_profile.major_interest or "MSCS")
+        target_program_by_school = self._resolve_target_programs_by_school(
+            intelligence=intelligence,
+            user_profile=user_profile,
+            target_schools=target_schools,
+        )
         recommendations = [
             self._build_recommendation(
                 school=school,
-                target_program=target_program,
+                target_program=target_program_by_school[school],
                 user_profile=user_profile,
                 intelligence=intelligence,
             )
@@ -62,6 +73,15 @@ class StrategicAdmissionsService:
             f"完成 {len(recommendations)} 个项目评估，"
             f"官方未完全发布学校数={predicted_count}，输出风险感知排序。"
         )
+        summary, strengths, weaknesses, gap_actions, recommendations = self._llm_refine_report(
+            user_profile=user_profile,
+            intelligence=intelligence,
+            summary=summary,
+            strengths=strengths,
+            weaknesses=weaknesses,
+            gap_actions=gap_actions,
+            recommendations=recommendations,
+        )
         return StrategicReport(
             summary=summary,
             model_breakdown=dict(self.MODEL_BREAKDOWN),
@@ -78,8 +98,46 @@ class StrategicAdmissionsService:
         schools = intelligence.get("target_schools", [])
         if not schools:
             schools = user_profile.target_schools
-        normalized = [item.upper() for item in schools if item.upper() in self.SUPPORTED_SCHOOLS]
-        return normalized or list(self.SUPPORTED_SCHOOLS)
+        return self.catalog.normalize_school_scope(schools)
+
+    def _resolve_target_programs_by_school(
+        self,
+        intelligence: AIEAgentOutput,
+        user_profile: UserProfile,
+        target_schools: list[str],
+    ) -> dict[str, str]:
+        portfolio = self.catalog.default_program_portfolio(target_schools)
+        explicit_mapping = intelligence.get("target_program_by_school", {})
+        if isinstance(explicit_mapping, dict):
+            for raw_school, raw_program in explicit_mapping.items():
+                school = self.catalog.normalize_school_code(str(raw_school))
+                program = self.catalog.normalize_program_code(str(raw_program))
+                if school is None or program is None:
+                    continue
+                if school in target_schools and self.catalog.is_supported_program(school, program):
+                    portfolio[school] = program
+        explicit_program = intelligence.get("target_program", "")
+        normalized_explicit = self.catalog.normalize_program_code(str(explicit_program))
+        if normalized_explicit is not None:
+            for school in target_schools:
+                if self.catalog.is_supported_program(school, normalized_explicit):
+                    portfolio[school] = normalized_explicit
+        profile_programs = [
+            normalized
+            for item in user_profile.target_programs
+            if (normalized := self.catalog.normalize_program_code(item)) is not None
+        ]
+        for school in target_schools:
+            if school in portfolio:
+                continue
+            for program in profile_programs:
+                if self.catalog.is_supported_program(school, program):
+                    portfolio[school] = program
+                    break
+        return {
+            school: portfolio.get(school) or self.catalog.supported_programs(school)[0]
+            for school in target_schools
+        }
 
     def _build_recommendation(
         self,
@@ -265,3 +323,85 @@ class StrategicAdmissionsService:
             actions.append("为冲刺项目准备替代叙事版本与推荐顺序预案")
         return actions
 
+    def _llm_refine_report(
+        self,
+        user_profile: UserProfile,
+        intelligence: AIEAgentOutput,
+        summary: str,
+        strengths: list[str],
+        weaknesses: list[str],
+        gap_actions: list[str],
+        recommendations: list[ProgramRecommendation],
+    ) -> tuple[str, list[str], list[str], list[str], list[ProgramRecommendation]]:
+        if not self.llm_client.enabled:
+            return summary, strengths, weaknesses, gap_actions, recommendations
+        payload = {
+            "profile": {
+                "major_interest": user_profile.major_interest,
+                "target_schools": user_profile.target_schools,
+                "target_programs": user_profile.target_programs,
+                "academic_metrics": user_profile.academic_metrics,
+                "language_scores": user_profile.language_scores,
+                "experiences": user_profile.experiences,
+                "risk_preference": user_profile.risk_preference,
+            },
+            "intelligence": {
+                "target_program": intelligence.get("target_program", ""),
+                "official_status_by_school": intelligence.get("official_status_by_school", {}),
+                "forecast_signals": intelligence.get("forecast_signals", []),
+            },
+            "recommendations": [
+                {
+                    "school": item.school,
+                    "program": item.program,
+                    "tier": item.tier,
+                    "rule_score": round(item.rule_score, 3),
+                    "semantic_score": round(item.semantic_score, 3),
+                    "risk_score": round(item.risk_score, 3),
+                    "overall_score": round(item.overall_score, 3),
+                    "reasons": item.reasons,
+                }
+                for item in recommendations
+            ],
+        }
+        prompt = "\n".join(
+            [
+                "请基于输入生成 JSON。",
+                (
+                    '返回格式：{"summary":"...","strengths":["..."],"weaknesses":["..."],'
+                    '"gap_actions":["..."],"reasons_by_school":{"NUS":["..."]}}'
+                ),
+                "不要输出 markdown。",
+                json.dumps(payload, ensure_ascii=False, default=str),
+            ]
+        )
+        try:
+            result = self.llm_client.chat_json(
+                system_prompt=SYSTEM_PROMPT,
+                user_prompt=prompt,
+                temperature=0,
+            )
+        except RuntimeError:
+            return summary, strengths, weaknesses, gap_actions, recommendations
+        refined_summary = str(result.get("summary", "")).strip() or summary
+        refined_strengths = self._normalize_text_list(result.get("strengths")) or strengths
+        refined_weaknesses = self._normalize_text_list(result.get("weaknesses")) or weaknesses
+        refined_gap_actions = self._normalize_text_list(result.get("gap_actions")) or gap_actions
+        reasons_by_school = result.get("reasons_by_school", {})
+        if isinstance(reasons_by_school, dict):
+            for item in recommendations:
+                reasons = self._normalize_text_list(reasons_by_school.get(item.school))
+                if reasons:
+                    item.reasons = reasons
+        return (
+            refined_summary,
+            refined_strengths,
+            refined_weaknesses,
+            refined_gap_actions,
+            recommendations,
+        )
+
+    def _normalize_text_list(self, value: object) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return [text for item in value if (text := str(item).strip())]

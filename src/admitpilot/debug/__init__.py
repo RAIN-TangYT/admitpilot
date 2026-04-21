@@ -1,1 +1,1 @@
-"""Debug helpers for dataset refresh and validation."""
+"""Debug helpers: dataset refresh, validation, and entrypoints."""

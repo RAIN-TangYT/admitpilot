@@ -4,6 +4,7 @@ __pycache__/
 *.pyd
 .Python
 .pytest_cache/
+.pytest-local/
 .mypy_cache/
 .ruff_cache/
 .pyre/
@@ -25,6 +26,7 @@ dist/
 *.egg-info/
 .ipynb_checkpoints/
 pip-wheel-metadata/
+.pip-tmp/
 
 # Environment files
 .env
@@ -33,6 +35,7 @@ pip-wheel-metadata/
 
 # Logs
 *.log
+tmp/
 
 .idea/
 !.idea/.gitignore
@@ -47,3 +50,7 @@ pip-wheel-metadata/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Office temporary files
+~$*.docx
+~$*.doc

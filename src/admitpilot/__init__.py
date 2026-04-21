@@ -1,1 +1,1 @@
-"""admitpilot 项目包入口。"""
+"""admitpilot package."""

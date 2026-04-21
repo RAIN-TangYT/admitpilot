@@ -1,17 +1,17 @@
-"""PAO 主编排器与 LangGraph 流程定义。"""
+"""PAO orchestrator and graph execution."""
 
 from __future__ import annotations
 
+import re
 import traceback
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Optional, cast
 from uuid import uuid4
 
-from langgraph.graph import END, START, StateGraph
-
 from admitpilot.agents.aie.agent import AIEAgent
-from admitpilot.agents.aie.service import AdmissionsIntelligenceService
+from admitpilot.agents.aie.runtime import build_runtime_aie_service
 from admitpilot.agents.base import BaseAgent
 from admitpilot.agents.cds.agent import CDSAgent
 from admitpilot.agents.cds.service import CoreDocumentService
@@ -19,6 +19,7 @@ from admitpilot.agents.dta.agent import DTAAgent
 from admitpilot.agents.dta.service import DynamicTimelineService
 from admitpilot.agents.sae.agent import SAEAgent
 from admitpilot.agents.sae.service import StrategicAdmissionsService
+from admitpilot.config import AdmitPilotSettings, load_settings
 from admitpilot.core.schemas import (
     AgentResult,
     AgentTask,
@@ -26,7 +27,6 @@ from admitpilot.core.schemas import (
     ApplicationContext,
     CDSAgentOutput,
     DTAAgentOutput,
-    SharedMemory,
     SAEAgentOutput,
     SharedMemory,
 )
@@ -34,40 +34,113 @@ from admitpilot.pao.contracts import OrchestrationRequest, OrchestrationResponse
 from admitpilot.pao.router import IntentRouter
 from admitpilot.pao.schemas import PaoGraphState, RoutePlan
 from admitpilot.platform import PlatformCommonBundle, build_default_platform_common_bundle
+from admitpilot.platform.llm.openai import OpenAIClient
 from admitpilot.platform.runtime import RuntimeStateMachine, TaskStatus, WorkflowStatus
+
+ImportedStateGraph: Any = None
+
+try:
+    from langgraph.graph import END, START
+    from langgraph.graph import StateGraph as _ImportedStateGraph
+except ModuleNotFoundError:
+    START = "__start__"
+    END = "__end__"
+
+    class _CompiledStateGraph:
+        def __init__(
+            self,
+            nodes: dict[str, Callable[[dict[str, Any]], dict[str, Any]]],
+            edges: dict[str, str],
+            conditional_edges: dict[str, tuple[Callable[[dict[str, Any]], str], dict[str, str]]],
+        ) -> None:
+            self._nodes = nodes
+            self._edges = edges
+            self._conditional_edges = conditional_edges
+
+        def invoke(self, state: dict[str, Any]) -> dict[str, Any]:
+            current = self._edges[START]
+            current_state = state
+            while current != END:
+                current_state = self._nodes[current](current_state)
+                if current in self._conditional_edges:
+                    decider, mapping = self._conditional_edges[current]
+                    current = mapping[decider(current_state)]
+                else:
+                    current = self._edges[current]
+            return current_state
+
+    class FallbackStateGraph:
+        def __init__(self, _state_type: Any) -> None:
+            self._nodes: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {}
+            self._edges: dict[str, str] = {}
+            self._conditional_edges: dict[
+                str,
+                tuple[Callable[[dict[str, Any]], str], dict[str, str]],
+            ] = {}
+
+        def add_node(self, name: str, fn: Callable[[dict[str, Any]], dict[str, Any]]) -> None:
+            self._nodes[name] = fn
+
+        def add_edge(self, source: str, target: str) -> None:
+            self._edges[source] = target
+
+        def add_conditional_edges(
+            self,
+            source: str,
+            decider: Callable[[dict[str, Any]], str],
+            mapping: dict[str, str],
+        ) -> None:
+            self._conditional_edges[source] = (decider, mapping)
+
+        def compile(self) -> _CompiledStateGraph:
+            return _CompiledStateGraph(self._nodes, self._edges, self._conditional_edges)
+else:
+    ImportedStateGraph = _ImportedStateGraph
+
+
+def _new_state_graph(state_type: Any) -> Any:
+    if ImportedStateGraph is not None:
+        return ImportedStateGraph(state_type)
+    return FallbackStateGraph(state_type)
 
 
 @dataclass
 class PrincipalApplicationOrchestrator:
-    """PAO：统一负责意图识别、路由、上下文与结果聚合。"""
+    """PAO: route, dispatch, aggregate, and persist shared context."""
 
     router: IntentRouter = field(default_factory=IntentRouter)
     agents: dict[str, BaseAgent] = field(default_factory=dict)
-    platform_bundle: Optional[PlatformCommonBundle] = None
+    platform_bundle: PlatformCommonBundle | None = None
+    settings: AdmitPilotSettings | None = None
     _graph: Any = field(init=False, repr=False)
     _workflow_state_machine: RuntimeStateMachine = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        """完成默认代理注入与图编译。"""
+        if self.settings is None:
+            self.settings = load_settings()
         if not self.agents:
-            self.agents = self._build_default_agents()
+            self.agents = self._build_default_agents(self.settings)
         if self.platform_bundle is None:
-            self.platform_bundle = build_default_platform_common_bundle()
+            self.platform_bundle = build_default_platform_common_bundle(settings=self.settings)
         self._workflow_state_machine = RuntimeStateMachine()
         self._graph = self._build_graph()
 
-    def _build_default_agents(self) -> dict[str, BaseAgent]:
-        """构建系统默认代理实例。"""
+    def _build_default_agents(self, settings: AdmitPilotSettings) -> dict[str, BaseAgent]:
+        llm_client = OpenAIClient(settings=settings)
         return {
-            "aie": AIEAgent(service=AdmissionsIntelligenceService()),
-            "sae": SAEAgent(service=StrategicAdmissionsService()),
-            "dta": DTAAgent(service=DynamicTimelineService()),
-            "cds": CDSAgent(service=CoreDocumentService()),
+            "aie": AIEAgent(
+                service=build_runtime_aie_service(
+                    settings=settings,
+                    llm_client=llm_client,
+                )
+            ),
+            "sae": SAEAgent(service=StrategicAdmissionsService(llm_client=llm_client)),
+            "dta": DTAAgent(service=DynamicTimelineService(llm_client=llm_client)),
+            "cds": CDSAgent(service=CoreDocumentService(llm_client=llm_client)),
         }
 
     def _build_graph(self) -> Any:
-        """定义并编译 LangGraph 执行图。"""
-        graph = StateGraph(PaoGraphState)
+        graph = _new_state_graph(PaoGraphState)
         graph.add_node("intake", self._intake_node)
         graph.add_node("route", self._route_node)
         graph.add_node("dispatch", self._dispatch_node)
@@ -88,7 +161,6 @@ class PrincipalApplicationOrchestrator:
         return graph.compile()
 
     def invoke(self, request: OrchestrationRequest) -> OrchestrationResponse:
-        """执行完整编排流程并返回统一响应。"""
         trace_id = f"trace-{uuid4().hex}"
         if self.platform_bundle is not None:
             self.platform_bundle.trace_collector.start_span(
@@ -128,7 +200,6 @@ class PrincipalApplicationOrchestrator:
         )
 
     def _intake_node(self, state: PaoGraphState) -> PaoGraphState:
-        """初始化编排状态。"""
         next_status = self._workflow_state_machine.transition(
             current=state["workflow_status"],
             target=WorkflowStatus.INTENT_PARSED,
@@ -136,7 +207,6 @@ class PrincipalApplicationOrchestrator:
         return {**state, "workflow_status": next_status}
 
     def _route_node(self, state: PaoGraphState) -> PaoGraphState:
-        """识别意图并构建任务计划。"""
         plan = self.router.build_plan(state["query"])
         next_status = self._workflow_state_machine.transition(
             current=state["workflow_status"],
@@ -150,7 +220,6 @@ class PrincipalApplicationOrchestrator:
         }
 
     def _dispatch_node(self, state: PaoGraphState) -> PaoGraphState:
-        """执行单个任务并回写上下文。"""
         pending_tasks = list(state["pending_tasks"])
         task = pending_tasks.pop(0)
         context = self._clone_context(state["context"])
@@ -162,7 +231,9 @@ class PrincipalApplicationOrchestrator:
                 target=WorkflowStatus.EXECUTING,
             )
         blockers = self._resolve_blockers(
-            task=task, context=context, prior_results=state["results"]
+            task=task,
+            context=context,
+            prior_results=state["results"],
         )
         if blockers and task.can_degrade:
             degraded = context.decisions.setdefault("degraded_tasks", {})
@@ -175,13 +246,40 @@ class PrincipalApplicationOrchestrator:
                 blocked_by=blockers,
             )
             self._write_shared_memory(context=context, result=result)
-            results = [*state["results"], result]
             return {
                 **state,
                 "workflow_status": workflow_status,
                 "pending_tasks": pending_tasks,
                 "current_task": task,
-                "results": results,
+                "results": [*state["results"], result],
+                "context": context,
+            }
+        agent = self.agents.get(task.agent)
+        if agent is None:
+            result = self._build_failed_result(
+                task=task,
+                agent_name=task.agent,
+                reason="agent_not_registered",
+                message=f"未注册代理: {task.agent}",
+            )
+            if self.platform_bundle is not None:
+                self.platform_bundle.trace_collector.start_span(
+                    name=f"agent.{task.agent}.run",
+                    trace_id=trace_id,
+                    attrs={"task": task.name},
+                )
+                self.platform_bundle.metrics_collector.inc("task_dispatch_total")
+                self.platform_bundle.trace_collector.end_span(
+                    name=f"agent.{task.agent}.run",
+                    trace_id=trace_id,
+                    attrs={"status": result.status.value},
+                )
+            return {
+                **state,
+                "workflow_status": workflow_status,
+                "pending_tasks": pending_tasks,
+                "current_task": task,
+                "results": [*state["results"], result],
                 "context": context,
             }
         if self.platform_bundle is not None:
@@ -195,76 +293,67 @@ class PrincipalApplicationOrchestrator:
                 event="task_dispatched",
                 details={"agent": task.agent, "task": task.name, "trace_id": trace_id},
             )
-        agent = self.agents.get(task.agent)
-        if agent is None:
-            result = self._build_failed_result(
-                task=task,
-                agent_name=task.agent,
-                reason="agent_not_registered",
-                message=f"未注册代理: {task.agent}",
-            )
-        else:
-            if self.platform_bundle is not None:
-                if not self.platform_bundle.capability_manager.allowed_agent(task.agent):
-                    result = self._build_failed_result(
-                        task=task,
-                        agent_name=task.agent,
-                        reason="capability_denied",
-                        message=f"agent {task.agent} not allowed by policy",
-                    )
-                    results = [*state["results"], result]
-                    self.platform_bundle.trace_collector.end_span(
-                        name=f"agent.{task.agent}.run",
-                        trace_id=trace_id,
-                        attrs={"status": result.status.value},
-                    )
-                    return {
-                        **state,
-                        "workflow_status": workflow_status,
-                        "pending_tasks": pending_tasks,
-                        "current_task": task,
-                        "results": results,
-                        "context": context,
-                    }
-                token = self.platform_bundle.capability_manager.issue(
-                    principal=task.agent, scopes={"execute"}
-                )
-                if not self.platform_bundle.capability_manager.validate(
-                    token=token, required_scope="execute"
-                ):
-                    result = self._build_failed_result(
-                        task=task,
-                        agent_name=task.agent,
-                        reason="capability_denied",
-                        message=f"token rejected for agent {task.agent}",
-                    )
-                    results = [*state["results"], result]
-                    self.platform_bundle.trace_collector.end_span(
-                        name=f"agent.{task.agent}.run",
-                        trace_id=trace_id,
-                        attrs={"status": result.status.value},
-                    )
-                    return {
-                        **state,
-                        "workflow_status": workflow_status,
-                        "pending_tasks": pending_tasks,
-                        "current_task": task,
-                        "results": results,
-                        "context": context,
-                    }
-            try:
-                result = agent.run(task=task, context=context)
-            except Exception as exc:
+            if not self.platform_bundle.capability_manager.allowed_agent(task.agent):
                 result = self._build_failed_result(
                     task=task,
                     agent_name=task.agent,
-                    reason="agent_execution_error",
-                    message=str(exc),
-                    trace=traceback.format_exc().splitlines(),
+                    reason="capability_denied",
+                    message=f"agent {task.agent} not allowed by policy",
                 )
+                self.platform_bundle.trace_collector.end_span(
+                    name=f"agent.{task.agent}.run",
+                    trace_id=trace_id,
+                    attrs={"status": result.status.value},
+                )
+                return {
+                    **state,
+                    "workflow_status": workflow_status,
+                    "pending_tasks": pending_tasks,
+                    "current_task": task,
+                    "results": [*state["results"], result],
+                    "context": context,
+                }
+            token = self.platform_bundle.capability_manager.issue(
+                principal=task.agent,
+                scopes={"execute"},
+            )
+            if not self.platform_bundle.capability_manager.validate(
+                token=token,
+                required_scope="execute",
+            ):
+                result = self._build_failed_result(
+                    task=task,
+                    agent_name=task.agent,
+                    reason="capability_denied",
+                    message=f"token rejected for agent {task.agent}",
+                )
+                self.platform_bundle.trace_collector.end_span(
+                    name=f"agent.{task.agent}.run",
+                    trace_id=trace_id,
+                    attrs={"status": result.status.value},
+                )
+                return {
+                    **state,
+                    "workflow_status": workflow_status,
+                    "pending_tasks": pending_tasks,
+                    "current_task": task,
+                    "results": [*state["results"], result],
+                    "context": context,
+                }
+        try:
+            result = agent.run(task=task, context=context)
+        except Exception as exc:
+            result = self._build_failed_result(
+                task=task,
+                agent_name=task.agent,
+                reason="agent_execution_error",
+                message=str(exc),
+                trace=traceback.format_exc().splitlines(),
+            )
         if self.platform_bundle is not None:
-            output_text = str(result.output)
-            allowed, policy_reason = self.platform_bundle.governance_engine.policy_validate(output_text)
+            allowed, policy_reason = self.platform_bundle.governance_engine.policy_validate(
+                str(result.output)
+            )
             if not allowed:
                 result = self._build_failed_result(
                     task=task,
@@ -293,7 +382,6 @@ class PrincipalApplicationOrchestrator:
         }
 
     def _aggregate_node(self, state: PaoGraphState) -> PaoGraphState:
-        """聚合多代理结果并输出最终摘要。"""
         workflow_status = state["workflow_status"]
         if workflow_status == WorkflowStatus.PLAN_BUILT:
             workflow_status = self._workflow_state_machine.transition(
@@ -315,84 +403,36 @@ class PrincipalApplicationOrchestrator:
             current=workflow_status,
             target=final_target,
         )
-        parts = [
-            (
-                f"PAO已处理 {len(state['results'])} 个代理任务，"
-                f"success={success_count} failed={failed_count} skipped={skipped_count} "
-                f"workflow={final_status.value}。"
-            )
-        ]
-        for item in state["results"]:
-            detail = (
-                f"[{item.agent.upper()}] {item.task}: "
-                f"status={item.status} confidence={item.confidence:.2f}"
-            )
-            parts.append(detail)
-        return {
-            **state,
-            "workflow_status": final_status,
-            "final_summary": " ".join(parts),
-        }
+        final_summary = self._build_final_summary(
+            state=state,
+            workflow_status=final_status.value,
+            success_count=success_count,
+            failed_count=failed_count,
+            skipped_count=skipped_count,
+        )
+        return {**state, "workflow_status": final_status, "final_summary": final_summary}
 
     def _route_decision(self, state: PaoGraphState) -> str:
-        """根据路由结果决定下一节点。"""
         return "dispatch" if state["pending_tasks"] else "aggregate"
 
     def _dispatch_decision(self, state: PaoGraphState) -> str:
-        """根据剩余任务决定循环或收敛。"""
         return "dispatch" if state["pending_tasks"] else "aggregate"
 
     def _clone_context(self, context: ApplicationContext) -> ApplicationContext:
-        """构建上下文副本，避免原地写入状态。"""
         return ApplicationContext(
             user_query=context.user_query,
             profile=context.profile,
             constraints=dict(context.constraints),
             shared_memory=cast(SharedMemory, deepcopy(dict(context.shared_memory))),
-            decisions=cast(dict[str, Any], deepcopy(dict(context.decisions))),
+            decisions=deepcopy(dict(context.decisions)),
         )
 
     def _resolve_blockers(
-        self, task: AgentTask, context: ApplicationContext, prior_results: list[AgentResult]
-    ) -> list[str]:
-        """检查任务依赖与共享内存依赖是否满足。"""
-        results_by_task = {item.task: item for item in prior_results}
-        blockers: list[str] = []
-        for dependency in task.depends_on:
-            if dependency not in results_by_task:
-                blockers.append(f"missing_task:{dependency}")
-                continue
-            dependency_result = results_by_task[dependency]
-            if dependency_result.status != TaskStatus.SUCCESS:
-                blockers.append(f"failed_task:{dependency}")
-        for memory_key in task.required_memory:
-            if memory_key not in context.shared_memory:
-                blockers.append(f"missing_memory:{memory_key}")
-        return blockers
-
-    def _build_skipped_result(
         self,
         task: AgentTask,
-        agent_name: str,
-        reason: str,
-        blocked_by: list[str],
-    ) -> AgentResult:
-        """生成被依赖阻塞的任务结果。"""
-        return AgentResult(
-            agent=agent_name,
-            task=task.name,
-            success=False,
-            status=TaskStatus.SKIPPED,
-            output={"error": reason, "message": "依赖未满足，任务被跳过"},
-            confidence=0.0,
-            trace=[f"{agent_name}:{task.name}:{reason}"],
-            blocked_by=blocked_by,
-        )
-
-    def _resolve_blockers(
-        self, task: AgentTask, context: ApplicationContext, prior_results: list[AgentResult]
+        context: ApplicationContext,
+        prior_results: list[AgentResult],
     ) -> list[str]:
-        """检查任务依赖与共享内存依赖是否满足。"""
         results_by_task = {item.task: item for item in prior_results}
         blockers: list[str] = []
         for dependency in task.depends_on:
@@ -415,7 +455,6 @@ class PrincipalApplicationOrchestrator:
         message: str,
         trace: Optional[list[str]] = None,
     ) -> AgentResult:
-        """生成失败任务结果。"""
         return AgentResult(
             agent=agent_name,
             task=task.name,
@@ -433,7 +472,6 @@ class PrincipalApplicationOrchestrator:
         reason: str,
         blocked_by: list[str],
     ) -> AgentResult:
-        """生成被依赖阻塞的任务结果。"""
         return AgentResult(
             agent=agent_name,
             task=task.name,
@@ -446,7 +484,6 @@ class PrincipalApplicationOrchestrator:
         )
 
     def _write_shared_memory(self, context: ApplicationContext, result: AgentResult) -> None:
-        """按契约回写共享内存。"""
         if result.status != TaskStatus.SUCCESS:
             return
         key = ""
@@ -473,7 +510,7 @@ class PrincipalApplicationOrchestrator:
         self.platform_bundle.session_memory.put(
             namespace=namespace,
             key=key,
-            value=cast(dict[str, Any], result.output),
+            value=result.output,
             source=result.agent,
             confidence=result.confidence,
             evidence_level=result.evidence_level,
@@ -482,7 +519,7 @@ class PrincipalApplicationOrchestrator:
         self.platform_bundle.versioned_memory.append(
             namespace=namespace,
             key=key,
-            value=cast(dict[str, Any], result.output),
+            value=result.output,
             source=result.agent,
             confidence=result.confidence,
             evidence_level=result.evidence_level,
@@ -492,7 +529,7 @@ class PrincipalApplicationOrchestrator:
             self.platform_bundle.artifact_store.put(
                 namespace=namespace,
                 object_id=f"{result.task}:{len(lineage)}",
-                payload=cast(dict[str, Any], result.output),
+                payload=result.output,
             )
         self.platform_bundle.governance_engine.audit(
             event="memory_write",
@@ -505,13 +542,213 @@ class PrincipalApplicationOrchestrator:
         )
 
     def _memory_namespace(self, context: ApplicationContext) -> str:
-        """Build namespace to isolate memory by applicant and cycle."""
         cycle = str(context.constraints.get("cycle", "unknown"))
         applicant = context.profile.name.strip() or "anonymous"
         return f"application:{cycle}:{applicant}"
 
     def _append_event(self, context: ApplicationContext, event: str) -> None:
-        """Append orchestrator domain events into context decisions."""
         events = context.decisions.setdefault("events", [])
         if isinstance(events, list):
             events.append(event)
+
+    def _build_final_summary(
+        self,
+        state: PaoGraphState,
+        workflow_status: str,
+        success_count: int,
+        failed_count: int,
+        skipped_count: int,
+    ) -> str:
+        intelligent_summary = self._build_intelligence_only_summary(state["results"])
+        if intelligent_summary:
+            return intelligent_summary
+        parts = [
+            (
+                f"PAO已处理 {len(state['results'])} 个代理任务，"
+                f"success={success_count} failed={failed_count} skipped={skipped_count} "
+                f"workflow={workflow_status}。"
+            )
+        ]
+        for item in state["results"]:
+            parts.append(
+                f"[{item.agent.upper()}] {item.task}: "
+                f"status={item.status.value} confidence={item.confidence:.2f}"
+            )
+        return " ".join(parts)
+
+    def _build_intelligence_only_summary(self, results: list[AgentResult]) -> str:
+        if len(results) != 1:
+            return ""
+        result = results[0]
+        if result.agent != "aie" or result.task != "collect_intelligence":
+            return ""
+        if result.status != TaskStatus.SUCCESS:
+            return ""
+        output = cast(AIEAgentOutput, result.output)
+        cycle = str(output.get("cycle", ""))
+        target_program_by_school = output.get("target_program_by_school", {})
+        unsupported_program_by_school = output.get("unsupported_program_by_school", {})
+        source_urls_by_school = output.get("official_source_urls_by_school", {})
+        status_by_school = output.get("official_status_by_school", {})
+        official_records = output.get("official_records", [])
+        lines = [f"AIE 官网情报摘要（{cycle} 申请季）"]
+        for school in output.get("target_schools", []):
+            program = target_program_by_school.get(
+                school,
+                unsupported_program_by_school.get(school, str(output.get("target_program", ""))),
+            )
+            status = status_by_school.get(school, "predicted")
+            lines.append(
+                f"- {school} / {program}：{self._status_summary_label(status)}"
+            )
+            if status == "unsupported_program":
+                continue
+            school_records = [
+                item
+                for item in official_records
+                if item.get("school") == school and item.get("program") == program
+            ]
+            merged_fields = self._merge_extracted_fields(school_records)
+            if deadline := str(merged_fields.get("application_deadline", "")).strip():
+                lines.append(f"  截止时间：{deadline}")
+            if languages := merged_fields.get("language_requirements", []):
+                if isinstance(languages, list) and languages:
+                    lines.append(f"  语言要求：{', '.join(str(item) for item in languages[:4])}")
+            if materials := merged_fields.get("required_materials", []):
+                if isinstance(materials, list) and materials:
+                    lines.append(f"  材料要求：{', '.join(str(item) for item in materials[:4])}")
+            if academic := str(merged_fields.get("academic_requirement", "")).strip():
+                lines.append(f"  学术要求：{self._truncate_text(academic, limit=120)}")
+            resolved_urls = self._resolve_official_source_urls(
+                school_records=school_records,
+                configured_urls=source_urls_by_school.get(school, {}),
+            )
+            for url_label, url in resolved_urls:
+                if url_label == "official":
+                    lines.append(f"  官方来源：{url}")
+                else:
+                    lines.append(f"  官方来源（{url_label}）：{url}")
+        return "\n".join(lines)
+
+    def _merge_extracted_fields(self, records: list[dict[str, Any]]) -> dict[str, Any]:
+        ordered_records = sorted(
+            records,
+            key=lambda item: 0 if str(item.get("page_type", "")).lower() == "requirements" else 1,
+        )
+        merged: dict[str, Any] = {}
+        for record in ordered_records:
+            raw_fields = record.get("extracted_fields", {})
+            if not isinstance(raw_fields, dict):
+                continue
+            for key, value in raw_fields.items():
+                if value in ("", [], None):
+                    continue
+                if isinstance(value, list):
+                    current = merged.get(key)
+                    if not isinstance(current, list):
+                        current = []
+                    for item in value:
+                        if item in ("", None):
+                            continue
+                        if item not in current:
+                            current.append(item)
+                    if current:
+                        merged[key] = current
+                    continue
+                if key not in merged:
+                    merged[key] = value
+        raw_languages = merged.get("language_requirements")
+        if isinstance(raw_languages, list):
+            sanitized_languages = self._sanitize_language_requirements(raw_languages)
+            if sanitized_languages:
+                merged["language_requirements"] = sanitized_languages
+            else:
+                merged.pop("language_requirements", None)
+        return merged
+
+    def _sanitize_language_requirements(self, values: list[Any]) -> list[str]:
+        sanitized: list[str] = []
+        seen: set[str] = set()
+        for item in values:
+            normalized = " ".join(str(item).split())
+            if not normalized:
+                continue
+            ielts_match = re.fullmatch(
+                r"IELTS\s*([0-9]+(?:\.[0-9])?)",
+                normalized,
+                flags=re.IGNORECASE,
+            )
+            if ielts_match:
+                score = float(ielts_match.group(1))
+                if not (0.0 <= score <= 9.0):
+                    continue
+                normalized = f"IELTS {ielts_match.group(1)}"
+            else:
+                toefl_match = re.fullmatch(
+                    r"TOEFL(?:\s|-)?IBT?\s*([0-9]{2,3})|TOEFL\s*([0-9]{2,3})",
+                    normalized,
+                    flags=re.IGNORECASE,
+                )
+                if toefl_match:
+                    score_text = toefl_match.group(1) or toefl_match.group(2)
+                    if score_text is None:
+                        continue
+                    score = int(score_text)
+                    if not (60 <= score <= 677):
+                        continue
+                    normalized = f"TOEFL {score}"
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            sanitized.append(normalized)
+        return sanitized
+
+    def _status_summary_label(self, status: str) -> str:
+        labels = {
+            "official_found": "已获取到本季官方页面",
+            "mixed": "已获取到部分官方页面，信息可能不完整",
+            "predicted": "当前仅有历史预测，尚未拿到本季完整官方页",
+            "unsupported_program": "该项目不在当前支持列表（unsupported_program）",
+        }
+        return labels.get(status, status)
+
+    def _resolve_official_source_urls(
+        self,
+        school_records: list[dict[str, Any]],
+        configured_urls: Any,
+    ) -> list[tuple[str, str]]:
+        resolved_by_type: dict[str, str] = {}
+        fallback_url = ""
+        for item in school_records:
+            raw_url = str(item.get("source_url", "")).strip()
+            if not raw_url:
+                continue
+            page_type = str(item.get("page_type", "")).strip().lower()
+            if page_type in {"requirements", "deadline"} and page_type not in resolved_by_type:
+                resolved_by_type[page_type] = raw_url
+            if not fallback_url:
+                fallback_url = raw_url
+        if isinstance(configured_urls, dict):
+            for page_type in ("requirements", "deadline"):
+                raw_configured = configured_urls.get(page_type, "")
+                configured = str(raw_configured).strip()
+                if configured and page_type not in resolved_by_type:
+                    resolved_by_type[page_type] = configured
+        if resolved_by_type.get("requirements") and resolved_by_type.get("deadline"):
+            requirements_url = resolved_by_type["requirements"]
+            deadline_url = resolved_by_type["deadline"]
+            if requirements_url == deadline_url:
+                return [("official", requirements_url)]
+            return [("requirements", requirements_url), ("deadline", deadline_url)]
+        if resolved_by_type.get("requirements"):
+            return [("requirements", resolved_by_type["requirements"])]
+        if resolved_by_type.get("deadline"):
+            return [("deadline", resolved_by_type["deadline"])]
+        if fallback_url:
+            return [("official", fallback_url)]
+        return []
+
+    def _truncate_text(self, text: str, limit: int) -> str:
+        if len(text) <= limit:
+            return text
+        return f"{text[: limit - 3].rstrip()}..."

@@ -2,53 +2,73 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from admitpilot.config import AdmitPilotSettings, load_settings
+from admitpilot.platform.common import ErrorCode
+from admitpilot.platform.governance import GovernanceSuite, build_default_governance_suite
 from admitpilot.platform.governance.contracts import GovernanceEngine
-from admitpilot.platform.mcp.method_specs import METHOD_CATALOG
-from admitpilot.platform.mcp.server_registry import MCPServerRegistry
-from admitpilot.platform.memory.adapters import (
-    ArtifactObjectStore,
-    SessionMemoryStore,
-    VersionedMemoryStore,
+from admitpilot.platform.mcp import (
+    MCPServerRegistry,
+    MethodSchemaRegistry,
+    build_default_mcp_server_registry,
+    build_default_method_schema_registry,
 )
+from admitpilot.platform.memory import MemoryAdapterBundle, build_default_memory_adapters
 from admitpilot.platform.observability.contracts import MetricsCollector, TraceCollector
 from admitpilot.platform.security.capability import CapabilityManager
-from admitpilot.platform.tools.registry import ToolRegistry
+from admitpilot.platform.tools import ToolRegistry, build_default_tool_registry
 
 
 @dataclass
 class PlatformCommonBundle:
-    """Composable shared platform services."""
+    """Shared platform bundle used by tests and orchestrator runtime."""
 
-    server_registry: MCPServerRegistry
+    settings: AdmitPilotSettings
+    method_schemas: MethodSchemaRegistry
+    mcp_servers: MCPServerRegistry
     tool_registry: ToolRegistry
-    session_memory: SessionMemoryStore
-    versioned_memory: VersionedMemoryStore
-    artifact_store: ArtifactObjectStore
-    capability_manager: CapabilityManager
-    governance_engine: GovernanceEngine
+    memory_adapters: MemoryAdapterBundle
+    governance: GovernanceSuite
     trace_collector: TraceCollector
     metrics_collector: MetricsCollector
+    capability_manager: CapabilityManager
+    governance_engine: GovernanceEngine
+    error_codes: tuple[ErrorCode, ...] = field(default_factory=lambda: tuple(ErrorCode))
+
+    @property
+    def server_registry(self) -> MCPServerRegistry:
+        return self.mcp_servers
+
+    @property
+    def session_memory(self):
+        return self.memory_adapters.session_store
+
+    @property
+    def versioned_memory(self):
+        return self.memory_adapters.versioned_store
+
+    @property
+    def artifact_store(self):
+        return self.memory_adapters.artifact_store
 
 
-def build_default_platform_common_bundle() -> PlatformCommonBundle:
-    """Build a default in-memory platform bundle."""
-    registry = ToolRegistry()
-    for spec in METHOD_CATALOG.values():
-        registry.register(spec)
-    server_registry = MCPServerRegistry()
-    server_registry.register("default", set(METHOD_CATALOG.keys()))
+def build_default_platform_common_bundle(
+    settings: AdmitPilotSettings | None = None,
+) -> PlatformCommonBundle:
+    effective_settings = settings or load_settings()
+    method_schemas = build_default_method_schema_registry()
     return PlatformCommonBundle(
-        server_registry=server_registry,
-        tool_registry=registry,
-        session_memory=SessionMemoryStore(),
-        versioned_memory=VersionedMemoryStore(),
-        artifact_store=ArtifactObjectStore(),
+        settings=effective_settings,
+        method_schemas=method_schemas,
+        mcp_servers=build_default_mcp_server_registry(schema_registry=method_schemas),
+        tool_registry=build_default_tool_registry(),
+        memory_adapters=build_default_memory_adapters(),
+        governance=build_default_governance_suite(),
+        trace_collector=TraceCollector(),
+        metrics_collector=MetricsCollector(),
         capability_manager=CapabilityManager(
             policy={"aie": {"execute"}, "sae": {"execute"}, "dta": {"execute"}, "cds": {"execute"}}
         ),
         governance_engine=GovernanceEngine(),
-        trace_collector=TraceCollector(),
-        metrics_collector=MetricsCollector(),
     )

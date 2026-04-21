@@ -1,0 +1,57 @@
+[
+  {
+    "school": "hkust",
+    "program": "mscs",
+    "cycle": "2026",
+    "source_type": "gradcafe",
+    "source_url": "https://cases.example/hkust-alpha",
+    "captured_at": "2026-03-20T12:00:00+00:00",
+    "gpa": "3.83",
+    "ielts": "7.5",
+    "experiences": ["research assistant", "distributed systems internship"],
+    "background_summary": "strong systems profile",
+    "evidence": ["offer screenshot", "timeline notes"],
+    "outcome": "offer",
+    "corroborated_count": 2
+  },
+  {
+    "school": "NTU",
+    "program": "MSCS",
+    "cycle": "2026",
+    "source_type": "official_forum",
+    "source_url": "https://cases.example/ntu-beta",
+    "captured_at": "2026-02-10T08:30:00+00:00",
+    "gpa": "3.68",
+    "toefl": "96",
+    "experiences": ["machine learning project"],
+    "background_summary": "balanced cs profile",
+    "evidence": ["forum archive"],
+    "outcome": "interview",
+    "corroborated_count": 1
+  },
+  {
+    "school": "unknown-school",
+    "program": "MSCS",
+    "cycle": "2026",
+    "source_type": "community",
+    "source_url": "https://cases.example/invalid-school",
+    "captured_at": "2026-03-01T00:00:00+00:00",
+    "gpa": "3.50",
+    "experiences": ["random project"],
+    "evidence": ["post"],
+    "outcome": "offer",
+    "corroborated_count": 0
+  },
+  {
+    "school": "HKUST",
+    "program": "MSCS",
+    "cycle": "2026",
+    "source_type": "community",
+    "source_url": "https://cases.example/missing-outcome",
+    "captured_at": "2026-03-05T00:00:00+00:00",
+    "gpa": "3.90",
+    "experiences": ["research"],
+    "evidence": ["post"],
+    "corroborated_count": 1
+  }
+]

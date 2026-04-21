@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, TypedDict, cast
+from typing import Any, NotRequired, TypedDict, cast
 
 from admitpilot.platform.runtime import contracts as runtime_contracts
 
@@ -34,6 +34,9 @@ class AIEAgentOutput(TypedDict):
     as_of_date: str
     target_schools: list[str]
     target_program: str
+    target_program_by_school: NotRequired[dict[str, str]]
+    unsupported_program_by_school: NotRequired[dict[str, str]]
+    official_source_urls_by_school: NotRequired[dict[str, dict[str, str]]]
     official_status_by_school: dict[str, str]
     official_records: list[dict[str, Any]]
     case_records: list[dict[str, Any]]

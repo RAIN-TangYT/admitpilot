@@ -46,16 +46,7 @@ class InterviewCue:
     cue: str
 
 
-@dataclass
-class ConsistencyIssue:
-    """跨文档一致性问题定义。"""
-
-    severity: str
-    message: str
-    impacted_documents: list[str] = field(default_factory=list)
-
-
-@dataclass
+@dataclass(slots=True)
 class DocumentSupportPack:
     """CDS 结构化产物。"""
 

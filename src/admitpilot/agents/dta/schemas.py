@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
 
 @dataclass
@@ -27,6 +26,7 @@ class RiskMarker:
     mitigation: str
 
 
+@dataclass(slots=True)
 class WeekTask:
     """周级执行任务。"""
 
@@ -37,6 +37,7 @@ class WeekTask:
     school_scope: list[str] = field(default_factory=list)
 
 
+@dataclass(slots=True)
 class TimelinePlan:
     """动态申请执行板。"""
 

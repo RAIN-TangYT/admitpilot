@@ -2,20 +2,26 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date
 from typing import Any
 
 from admitpilot.agents.dta.deadlines import apply_deadline_reverse_plan, extract_official_deadlines
+from admitpilot.agents.dta.prompts import SYSTEM_PROMPT
 from admitpilot.agents.dta.replan import apply_replan
 from admitpilot.agents.dta.scheduler import schedule_milestones
 from admitpilot.agents.dta.schemas import Milestone, RiskMarker, TimelinePlan, WeekTask
 from admitpilot.core.schemas import AIEAgentOutput, SAEAgentOutput
+from admitpilot.platform.llm.openai import OpenAIClient
 
 
 class DynamicTimelineService:
     """负责将策略结果转化为可执行周计划。"""
 
     DEFAULT_WEEKS = 8
+
+    def __init__(self, llm_client: OpenAIClient | None = None) -> None:
+        self.llm_client = llm_client or OpenAIClient()
 
     def build_plan(
         self,
@@ -29,7 +35,7 @@ class DynamicTimelineService:
         schools = intelligence.get("target_schools", [])
         recommendations = strategy.get("recommendations", [])
         milestone_graph = self._build_milestone_graph(
-            recommendations=recommendations, schools=schools
+            strategy=strategy, recommendations=recommendations, schools=schools
         )
         deadlines = extract_official_deadlines(intelligence.get("official_records", []))
         milestone_graph = apply_deadline_reverse_plan(
@@ -71,6 +77,15 @@ class DynamicTimelineService:
         document_instructions = self._build_document_instructions(
             milestones=replan.milestones, schools=schools
         )
+        milestones, weeks, risk_markers, document_instructions = self._llm_refine_plan(
+            strategy=strategy,
+            intelligence=intelligence,
+            constraints=constraints,
+            milestones=milestones,
+            weeks=weeks,
+            risk_markers=risk_markers,
+            document_instructions=document_instructions,
+        )
         return TimelinePlan(
             title=f"{cycle}申请季执行板 ({timezone})",
             milestones=replan.milestones,
@@ -80,37 +95,78 @@ class DynamicTimelineService:
         )
 
     def _build_milestone_graph(
-        self, recommendations: list[dict[str, Any]], schools: list[str]
+        self,
+        strategy: SAEAgentOutput,
+        recommendations: list[dict[str, Any]],
+        schools: list[str],
     ) -> list[Milestone]:
         """构建里程碑依赖图骨架。
 
-        TODO: 接入学校级 deadline DAG 与材料依赖规则。
+        基于 SAE 输出的 gap_actions 动态添加前置里程碑节点。
         """
         active_schools = schools or [
             item.get("school", "") for item in recommendations if item.get("school")
         ]
         school_scope = [item for item in active_schools if item]
+
         milestones = [
             Milestone(key="scope_lock", title="锁定项目池与优先级", due_week=1),
-            Milestone(
-                key="doc_pack_v1",
-                title="完成 SoP/CV 第一版",
-                due_week=3,
-                depends_on=["scope_lock"],
-            ),
-            Milestone(
-                key="submission_batch_1",
-                title="完成第一批网申提交",
-                due_week=6,
-                depends_on=["doc_pack_v1"],
-            ),
-            Milestone(
-                key="interview_prep",
-                title="完成面试问题集与模拟",
-                due_week=7,
-                depends_on=["submission_batch_1"],
-            ),
         ]
+
+        # 动态解析 SAE 的 Gap Actions
+        gap_actions = strategy.get("gap_actions", [])
+        language_keywords = ["语言", "雅思", "托福", "IELTS", "TOEFL"]
+        background_keywords = ["科研", "实习", "项目", "课程"]
+        has_language_gap = any(
+            keyword in action for action in gap_actions for keyword in language_keywords
+        )
+        has_bg_gap = any(
+            keyword in action for action in gap_actions for keyword in background_keywords
+        )
+
+        if has_language_gap:
+            milestones.append(
+                Milestone(
+                    key="language_test",
+                    title="完成语言标化考试出分",
+                    due_week=2,
+                    depends_on=["scope_lock"],
+                )
+            )
+
+        if has_bg_gap:
+            milestones.append(
+                Milestone(
+                    key="background_enhancement",
+                    title="完成背景提升核心产出 (项目/实习)",
+                    due_week=4,
+                    depends_on=["scope_lock"],
+                )
+            )
+
+        milestones.extend(
+            [
+                Milestone(
+                    key="doc_pack_v1",
+                    title="完成 SoP/CV 第一版",
+                    due_week=3 if not has_bg_gap else 5,
+                    depends_on=["scope_lock"],
+                ),
+                Milestone(
+                    key="submission_batch_1",
+                    title="完成第一批网申提交",
+                    due_week=6,
+                    depends_on=["doc_pack_v1"],
+                ),
+                Milestone(
+                    key="interview_prep",
+                    title="完成面试问题集与模拟",
+                    due_week=7,
+                    depends_on=["submission_batch_1"],
+                ),
+            ]
+        )
+
         if school_scope and len(school_scope) >= 4:
             milestones.append(
                 Milestone(
@@ -208,3 +264,121 @@ class DynamicTimelineService:
     def _resolve_total_weeks(self, constraints: dict[str, Any]) -> int:
         weeks = int(constraints.get("timeline_weeks", self.DEFAULT_WEEKS))
         return min(max(weeks, 4), 16)
+
+    def _llm_refine_plan(
+        self,
+        strategy: SAEAgentOutput,
+        intelligence: AIEAgentOutput,
+        constraints: dict[str, Any],
+        milestones: list[Milestone],
+        weeks: list[WeekTask],
+        risk_markers: list[RiskMarker],
+        document_instructions: list[str],
+    ) -> tuple[list[Milestone], list[WeekTask], list[RiskMarker], list[str]]:
+        if not self.llm_client.enabled:
+            return milestones, weeks, risk_markers, document_instructions
+        payload = {
+            "constraints": constraints,
+            "ranking_order": strategy.get("ranking_order", []),
+            "strengths": strategy.get("strengths", []),
+            "weaknesses": strategy.get("weaknesses", []),
+            "gap_actions": strategy.get("gap_actions", []),
+            "official_status_by_school": intelligence.get("official_status_by_school", {}),
+            "milestones": [
+                {"key": item.key, "title": item.title, "due_week": item.due_week}
+                for item in milestones
+            ],
+            "weeks": [
+                {
+                    "week": week_entry.week,
+                    "focus": week_entry.focus,
+                    "items": week_entry.items,
+                }
+                for week_entry in weeks
+            ],
+            "risk_markers": [
+                {"week": item.week, "level": item.level, "message": item.message}
+                for item in risk_markers
+            ],
+            "document_instructions": document_instructions,
+        }
+        prompt = "\n".join(
+            [
+                (
+                    "你是一个严格的留学时间线规划师。请结合该申请者的优劣势 "
+                    "(strengths/weaknesses) 和短板提升行动 (gap_actions)，为每个 "
+                    "week 生成具体、可执行的 weekly_focus 和 week_items。"
+                ),
+                (
+                    "必须输出合法的 JSON 格式。避免在字符串中使用未转义的双引号，"
+                    "请检查括号与逗号是否闭合。"
+                ),
+                "请基于输入输出 JSON。",
+                (
+                    '返回格式：{"milestone_titles":{"scope_lock":"..."},"weekly_focus":{"1":"..."},'
+                    '"week_items":{"1":["..."]},"risk_markers":[{"week":2,"level":"yellow","message":"...","mitigation":"..."}],'
+                    '"document_instructions":["..."]}'
+                ),
+                "不要输出 markdown。",
+                json.dumps(payload, ensure_ascii=False, default=str),
+            ]
+        )
+        try:
+            result = self.llm_client.chat_json(
+                system_prompt=SYSTEM_PROMPT,
+                user_prompt=prompt,
+                temperature=0,
+            )
+        except RuntimeError:
+            return milestones, weeks, risk_markers, document_instructions
+        milestone_titles = result.get("milestone_titles", {})
+        if isinstance(milestone_titles, dict):
+            for item in milestones:
+                title = str(milestone_titles.get(item.key, "")).strip()
+                if title:
+                    item.title = title
+        weekly_focus = result.get("weekly_focus", {})
+        week_items = result.get("week_items", {})
+        for week_entry in weeks:
+            if isinstance(weekly_focus, dict):
+                focus = str(weekly_focus.get(str(week_entry.week), "")).strip()
+                if focus:
+                    week_entry.focus = focus
+            if isinstance(week_items, dict):
+                items = week_items.get(str(week_entry.week))
+                if isinstance(items, list):
+                    normalized = [text for raw in items if (text := str(raw).strip())]
+                    if normalized:
+                        week_entry.items = normalized
+        llm_risks = result.get("risk_markers", [])
+        if isinstance(llm_risks, list):
+            normalized_risks: list[RiskMarker] = []
+            for raw in llm_risks:
+                if not isinstance(raw, dict):
+                    continue
+                try:
+                    week = int(raw.get("week", 0))
+                except (TypeError, ValueError):
+                    continue
+                message = str(raw.get("message", "")).strip()
+                mitigation = str(raw.get("mitigation", "")).strip()
+                level = str(raw.get("level", "yellow")).strip() or "yellow"
+                if week > 0 and message and mitigation:
+                    normalized_risks.append(
+                        RiskMarker(
+                            week=week,
+                            level=level,
+                            message=message,
+                            mitigation=mitigation,
+                        )
+                    )
+            if normalized_risks:
+                risk_markers = normalized_risks
+        llm_instructions = result.get("document_instructions")
+        if isinstance(llm_instructions, list):
+            normalized_instructions = [
+                text for raw in llm_instructions if (text := str(raw).strip())
+            ]
+            if normalized_instructions:
+                document_instructions = normalized_instructions
+        return milestones, weeks, risk_markers, document_instructions

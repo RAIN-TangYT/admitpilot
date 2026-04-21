@@ -1,5 +1,6 @@
 from typing import Any, cast
 
+from admitpilot.config import AdmitPilotSettings
 from admitpilot.core.schemas import AgentTask, UserProfile
 from admitpilot.pao.contracts import OrchestrationRequest
 from admitpilot.pao.orchestrator import PrincipalApplicationOrchestrator
@@ -51,8 +52,14 @@ class DegradeOnlyDocumentsRouter:
         )
 
 
+def _build_orchestrator() -> PrincipalApplicationOrchestrator:
+    return PrincipalApplicationOrchestrator(
+        settings=AdmitPilotSettings(run_mode="test", openai_api_key="")
+    )
+
+
 def test_orchestrator_happy_path() -> None:
-    orchestrator = PrincipalApplicationOrchestrator()
+    orchestrator = _build_orchestrator()
     response = orchestrator.invoke(
         OrchestrationRequest(
             user_query="我需要选校、时间线和文书支持",
@@ -65,8 +72,40 @@ def test_orchestrator_happy_path() -> None:
     assert "aie" in response.context.shared_memory
 
 
+def test_orchestrator_expands_strategy_for_timeline_only_query() -> None:
+    orchestrator = _build_orchestrator()
+    response = orchestrator.invoke(
+        OrchestrationRequest(
+            user_query="请给我做申请时间线",
+            profile=UserProfile(major_interest="Computer Science"),
+            constraints={"cycle": "2026", "timezone": "Asia/Shanghai"},
+        )
+    )
+    agents = [result.agent for result in response.results]
+    assert agents == ["aie", "sae", "dta"]
+    assert all(result.status == TaskStatus.SUCCESS for result in response.results)
+    assert response.context is not None
+    assert not response.context.decisions.get("degraded_tasks")
+
+
+def test_orchestrator_expands_full_chain_for_documents_only_query() -> None:
+    orchestrator = _build_orchestrator()
+    response = orchestrator.invoke(
+        OrchestrationRequest(
+            user_query="请帮我准备文书",
+            profile=UserProfile(major_interest="Computer Science"),
+            constraints={"cycle": "2026", "timezone": "Asia/Shanghai"},
+        )
+    )
+    agents = [result.agent for result in response.results]
+    assert agents == ["aie", "sae", "dta", "cds"]
+    assert all(result.status == TaskStatus.SUCCESS for result in response.results)
+    assert response.context is not None
+    assert not response.context.decisions.get("degraded_tasks")
+
+
 def test_orchestrator_handles_unknown_agent() -> None:
-    orchestrator = PrincipalApplicationOrchestrator()
+    orchestrator = _build_orchestrator()
     orchestrator.router = cast(Any, UnknownAgentRouter())
     response = orchestrator.invoke(
         OrchestrationRequest(
@@ -81,7 +120,7 @@ def test_orchestrator_handles_unknown_agent() -> None:
 
 
 def test_orchestrator_skips_task_when_dependency_not_met() -> None:
-    orchestrator = PrincipalApplicationOrchestrator()
+    orchestrator = _build_orchestrator()
     orchestrator.router = cast(Any, MissingDependencyRouter())
     response = orchestrator.invoke(
         OrchestrationRequest(
@@ -99,7 +138,7 @@ def test_orchestrator_skips_task_when_dependency_not_met() -> None:
 
 
 def test_orchestrator_allows_degrade_task_execution() -> None:
-    orchestrator = PrincipalApplicationOrchestrator()
+    orchestrator = _build_orchestrator()
     orchestrator.router = cast(Any, DegradeOnlyDocumentsRouter())
     response = orchestrator.invoke(
         OrchestrationRequest(
@@ -112,6 +151,159 @@ def test_orchestrator_allows_degrade_task_execution() -> None:
     result = response.results[0]
     assert result.status == TaskStatus.SUCCESS
     assert result.success is True
+    assert result.output["document_drafts"] == []
+    assert "缺少上游" in result.output["consistency_issues"][0]["message"]
+    assert "申请动机与长期职业目标一致" not in str(result.output)
+    assert "关键里程碑数量=0" not in str(result.output)
     assert response.context is not None
     degraded = response.context.decisions.get("degraded_tasks", {})
     assert "draft_documents" in degraded
+
+
+def test_orchestrator_returns_readable_intelligence_summary_for_official_query() -> None:
+    orchestrator = _build_orchestrator()
+    response = orchestrator.invoke(
+        OrchestrationRequest(
+            user_query="请告诉我 HKUST MSc in Information Technology 的官网要求和 deadline",
+            profile=UserProfile(),
+            constraints={"cycle": "2026", "timezone": "Asia/Shanghai"},
+        )
+    )
+
+    assert [result.agent for result in response.results] == ["aie"]
+    assert response.context is not None
+    aie_output = response.context.shared_memory["aie"]
+    assert aie_output["target_schools"] == ["HKUST"]
+    assert aie_output["target_program_by_school"]["HKUST"] == "MSIT"
+    assert any(
+        isinstance(item.get("extracted_fields"), dict) and item["extracted_fields"]
+        for item in aie_output["official_records"]
+    )
+    assert "AIE 官网情报摘要" in response.summary
+    assert "HKUST / MSIT" in response.summary
+    assert "截止时间" in response.summary
+
+
+def test_orchestrator_routes_chinese_deadline_query_to_aie_only() -> None:
+    orchestrator = _build_orchestrator()
+    response = orchestrator.invoke(
+        OrchestrationRequest(
+            user_query="请告诉我HKU的MSCS的截止时间",
+            profile=UserProfile(),
+            constraints={"cycle": "2026", "timezone": "Asia/Shanghai"},
+        )
+    )
+
+    assert [result.agent for result in response.results] == ["aie"]
+    assert response.context is not None
+    aie_output = response.context.shared_memory["aie"]
+    assert aie_output["target_schools"] == ["HKU"]
+    assert aie_output["target_program_by_school"]["HKU"] == "MSCS"
+    assert aie_output["official_status_by_school"]["HKU"] == "official_found"
+    assert "AIE 官网情报摘要" in response.summary
+    assert "截止时间" in response.summary
+
+
+def test_orchestrator_handles_chinese_school_name_official_query() -> None:
+    orchestrator = _build_orchestrator()
+    response = orchestrator.invoke(
+        OrchestrationRequest(
+            user_query="请告诉我香港大学 Master of Data Science 的官网要求和 deadline",
+            profile=UserProfile(),
+            constraints={"cycle": "2026", "timezone": "Asia/Shanghai"},
+        )
+    )
+
+    assert [result.agent for result in response.results] == ["aie"]
+    assert response.context is not None
+    aie_output = response.context.shared_memory["aie"]
+    assert aie_output["target_schools"] == ["HKU"]
+    assert aie_output["target_program_by_school"]["HKU"] == "MDS"
+    assert aie_output["official_status_by_school"]["HKU"] == "official_found"
+    assert "HKU / MDS" in response.summary
+    assert "截止时间" in response.summary
+
+
+def test_orchestrator_maps_ais_alias_to_mtech_ais_for_nus_query() -> None:
+    orchestrator = _build_orchestrator()
+    response = orchestrator.invoke(
+        OrchestrationRequest(
+            user_query="请告诉我NUS的AIS的官网要求和截至时间",
+            profile=UserProfile(),
+            constraints={"cycle": "2026", "timezone": "Asia/Shanghai"},
+        )
+    )
+
+    assert [result.agent for result in response.results] == ["aie"]
+    assert response.context is not None
+    aie_output = response.context.shared_memory["aie"]
+    assert aie_output["target_schools"] == ["NUS"]
+    assert aie_output["target_program_by_school"]["NUS"] == "MTECH_AIS"
+    assert "NUS / MTECH_AIS" in response.summary
+
+
+def test_orchestrator_returns_configured_source_url_when_no_structured_records() -> None:
+    orchestrator = _build_orchestrator()
+    response = orchestrator.invoke(
+        OrchestrationRequest(
+            user_query="请告诉我 NUS MSBA 的官网要求和 deadline",
+            profile=UserProfile(),
+            constraints={"cycle": "2026", "timezone": "Asia/Shanghai"},
+        )
+    )
+
+    assert [result.agent for result in response.results] == ["aie"]
+    assert response.context is not None
+    aie_output = response.context.shared_memory["aie"]
+    assert aie_output["target_schools"] == ["NUS"]
+    assert aie_output["target_program_by_school"]["NUS"] == "MSBA"
+    assert (
+        aie_output["official_source_urls_by_school"]["NUS"]["requirements"]
+        == "https://masters.nus.edu.sg/programmes/master-of-science-in-business-analytics"
+    )
+    assert "官方来源" in response.summary
+    assert "master-of-science-in-business-analytics" in response.summary
+
+
+def test_merge_extracted_fields_prefers_requirements_and_dedupes_lists() -> None:
+    orchestrator = _build_orchestrator()
+
+    merged = orchestrator._merge_extracted_fields(
+        [
+            {
+                "page_type": "deadline",
+                "extracted_fields": {
+                    "language_requirements": ["IELTS 5", "TOEFL 90", "TOEFL 908"]
+                },
+            },
+            {
+                "page_type": "requirements",
+                "extracted_fields": {
+                    "language_requirements": ["IELTS 6.0", "IELTS 5", "TOEFL 90"]
+                },
+            },
+        ]
+    )
+
+    assert merged["language_requirements"] == ["IELTS 6.0", "IELTS 5", "TOEFL 90"]
+
+
+def test_orchestrator_returns_unsupported_program_for_unknown_program_query() -> None:
+    orchestrator = _build_orchestrator()
+    response = orchestrator.invoke(
+        OrchestrationRequest(
+            user_query="请告诉我香港大学 Master of Quantum Computing 的官网要求和 deadline",
+            profile=UserProfile(),
+            constraints={"cycle": "2026", "timezone": "Asia/Shanghai"},
+        )
+    )
+
+    assert [result.agent for result in response.results] == ["aie"]
+    assert response.context is not None
+    aie_output = response.context.shared_memory["aie"]
+    assert aie_output["target_schools"] == ["HKU"]
+    assert "HKU" not in aie_output["target_program_by_school"]
+    assert aie_output["unsupported_program_by_school"]["HKU"] != ""
+    assert aie_output["official_status_by_school"]["HKU"] == "unsupported_program"
+    assert aie_output["official_records"] == []
+    assert "unsupported_program" in response.summary

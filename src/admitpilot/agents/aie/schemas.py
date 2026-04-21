@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
 
 
 @dataclass
@@ -20,15 +20,23 @@ class OfficialAdmissionRecord:
     published_date: date
     effective_date: date
     fetched_at: datetime
-    source_hash: str
+    content_hash: str
     quality_score: float
     confidence: float
+    extracted_fields: dict[str, Any] = field(default_factory=dict)
+    parse_confidence: float = 0.0
     source_type: str = "official"
     source_credibility: str = "official_primary"
     version_id: str = ""
+    source_hash: str = ""
     is_policy_change: bool = False
     change_type: str = "updated"
+    changed_fields: list[str] = field(default_factory=list)
     delta_summary: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.source_hash:
+            self.source_hash = self.content_hash
 
 
 @dataclass
@@ -75,6 +83,7 @@ class OfficialCycleSnapshot:
     confidence: float
     is_predicted: bool
     entries: list[OfficialAdmissionRecord] = field(default_factory=list)
+    source_urls: dict[str, str] = field(default_factory=dict)
     prediction_basis: list[str] = field(default_factory=list)
     update_released: bool = False
     expires_at: datetime | None = None
