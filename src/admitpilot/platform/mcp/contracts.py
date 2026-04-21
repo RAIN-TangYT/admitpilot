@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
-@dataclass(slots=True)
+@dataclass
 class MCPRequest:
     """All MCP requests carry trace and tool IDs."""
 
@@ -18,7 +18,7 @@ class MCPRequest:
     result_version: int = 1
 
 
-@dataclass(slots=True)
+@dataclass
 class MCPResponse:
     """MCP response envelope."""
 

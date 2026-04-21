@@ -1,0 +1,18 @@
+school: CUHK
+program: MSCS
+hard_thresholds:
+  gpa_min: 3.2
+  ielts_min: 6.5
+soft_thresholds:
+  gpa_target: 3.5
+  ielts_target: 7.0
+recommended_backgrounds:
+  - computer science
+  - data systems
+  - software project
+risk_flags:
+  - early_application_preferred
+  - competition_high
+missing_input_penalties:
+  ielts: 0.06
+  experience: 0.03

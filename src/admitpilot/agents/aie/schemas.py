@@ -7,7 +7,7 @@ from datetime import date, datetime
 from typing import Any, Literal
 
 
-@dataclass(slots=True)
+@dataclass
 class OfficialAdmissionRecord:
     """官网招生记录。"""
 
@@ -39,7 +39,7 @@ class OfficialAdmissionRecord:
             self.source_hash = self.content_hash
 
 
-@dataclass(slots=True)
+@dataclass
 class CaseRecord:
     """第三方案例记录。"""
 
@@ -60,7 +60,7 @@ class CaseRecord:
     credibility_label: str = "medium"
 
 
-@dataclass(slots=True)
+@dataclass
 class CaseSnapshot:
     """案例快照统计。"""
 
@@ -71,7 +71,7 @@ class CaseSnapshot:
     expires_at: datetime | None = None
 
 
-@dataclass(slots=True)
+@dataclass
 class OfficialCycleSnapshot:
     """当前申请季官方信息快照。"""
 
@@ -89,7 +89,7 @@ class OfficialCycleSnapshot:
     expires_at: datetime | None = None
 
 
-@dataclass(slots=True)
+@dataclass
 class ForecastSignal:
     """当前申请季信息不足时的预测信号。"""
 
@@ -100,7 +100,7 @@ class ForecastSignal:
     reason: str = ""
 
 
-@dataclass(slots=True)
+@dataclass
 class AdmissionsIntelligencePack:
     """AIE 标准化情报包。"""
 

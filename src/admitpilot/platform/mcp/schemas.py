@@ -10,7 +10,7 @@ from admitpilot.platform.mcp.method_specs import METHOD_CATALOG, MethodContract
 
 @dataclass(slots=True)
 class MethodSchema:
-    """Field-level schema abstraction."""
+    """MCP method spec for registry and authorization."""
 
     method: str
     required_fields: tuple[str, ...]

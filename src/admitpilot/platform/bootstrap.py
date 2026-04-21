@@ -20,7 +20,7 @@ from admitpilot.platform.security.capability import CapabilityManager
 from admitpilot.platform.tools import ToolRegistry, build_default_tool_registry
 
 
-@dataclass(slots=True)
+@dataclass
 class PlatformCommonBundle:
     """Shared platform bundle used by tests and orchestrator runtime."""
 

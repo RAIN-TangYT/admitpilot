@@ -8,7 +8,7 @@ from typing import Any
 from admitpilot.platform.common.time import to_iso_utc
 
 
-@dataclass(slots=True)
+@dataclass
 class TraceCollector:
     """Collect structured trace spans."""
 
@@ -40,7 +40,7 @@ class TraceCollector:
         return list(self._spans)
 
 
-@dataclass(slots=True)
+@dataclass
 class MetricsCollector:
     """Collect counters in-memory."""
 

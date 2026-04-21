@@ -32,7 +32,7 @@ class WorkflowStatus(StrEnum):
     FAILED = "FAILED"
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentTask:
     """Single agent task unit."""
 
@@ -45,7 +45,7 @@ class AgentTask:
     can_degrade: bool = False
 
 
-@dataclass(slots=True)
+@dataclass
 class AgentResult:
     """Single agent result payload."""
 

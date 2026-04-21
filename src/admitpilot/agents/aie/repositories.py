@@ -19,7 +19,7 @@ T = TypeVar("T")
 OfficialSnapshotStatus = Literal["official_found", "predicted", "mixed"]
 
 
-@dataclass(slots=True)
+@dataclass
 class _CacheEntry:
     value: object
     expires_at: datetime
@@ -62,7 +62,7 @@ class CaseSnapshotRepository(Protocol):
         """Persist case snapshot with expiration."""
 
 
-@dataclass(slots=True)
+@dataclass
 class _InMemoryTTLRepository:
     _entries: dict[str, _CacheEntry] = field(default_factory=dict)
 
@@ -81,7 +81,7 @@ class _InMemoryTTLRepository:
         self._entries[key] = _CacheEntry(value=value, expires_at=expires_at)
 
 
-@dataclass(slots=True)
+@dataclass
 class InMemoryOfficialSnapshotRepository(_InMemoryTTLRepository):
     """TTL repository for official snapshots."""
 
@@ -120,7 +120,7 @@ class InMemoryOfficialSnapshotRepository(_InMemoryTTLRepository):
         return sorted(latest_records, key=lambda item: item.page_type)
 
 
-@dataclass(slots=True)
+@dataclass
 class InMemoryCaseSnapshotRepository(_InMemoryTTLRepository):
     """TTL repository for case snapshots."""
 

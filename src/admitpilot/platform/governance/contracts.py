@@ -192,7 +192,7 @@ def _apply_default_acl_policies(acl: InMemoryNamespaceAclManager) -> None:
             acl.write_policies[(agent, namespace)] = True
 
 
-@dataclass(slots=True)
+@dataclass
 class GovernanceEngine:
     """Simple policy gate and audit trail used by the orchestrator runtime."""
 

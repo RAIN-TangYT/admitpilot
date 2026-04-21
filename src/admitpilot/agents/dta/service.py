@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from typing import Any
 
+from admitpilot.agents.dta.deadlines import apply_deadline_reverse_plan, extract_official_deadlines
 from admitpilot.agents.dta.prompts import SYSTEM_PROMPT
+from admitpilot.agents.dta.replan import apply_replan
+from admitpilot.agents.dta.scheduler import schedule_milestones
 from admitpilot.agents.dta.schemas import Milestone, RiskMarker, TimelinePlan, WeekTask
 from admitpilot.core.schemas import AIEAgentOutput, SAEAgentOutput
 from admitpilot.platform.llm.openai import OpenAIClient
@@ -33,22 +37,45 @@ class DynamicTimelineService:
         milestone_graph = self._build_milestone_graph(
             strategy=strategy, recommendations=recommendations, schools=schools
         )
+        deadlines = extract_official_deadlines(intelligence.get("official_records", []))
+        milestone_graph = apply_deadline_reverse_plan(
+            milestones=milestone_graph,
+            deadlines=deadlines,
+            as_of_date=self._resolve_as_of_date(intelligence),
+            total_weeks=self._resolve_total_weeks(constraints),
+        )
+        milestone_graph = schedule_milestones(milestone_graph)
         milestones = self._schedule_milestones(
             milestone_graph=milestone_graph,
             constraints=constraints,
             total_weeks=self._resolve_total_weeks(constraints),
         )
-        weeks = self._build_weekly_plan(
+        replan = apply_replan(
             milestones=milestones,
+            constraints=constraints,
+            total_weeks=self._resolve_total_weeks(constraints),
+        )
+        weeks = self._build_weekly_plan(
+            milestones=replan.milestones,
             total_weeks=self._resolve_total_weeks(constraints),
             schools=schools,
         )
         risk_markers = self._build_risk_markers(
-            milestones=milestones,
+            milestones=replan.milestones,
             official_status_by_school=intelligence.get("official_status_by_school", {}),
         )
+        risk_markers.extend(replan.risks)
+        if not replan.feasible:
+            risk_markers.append(
+                RiskMarker(
+                    week=1,
+                    level="red",
+                    message="当前约束下排期不可行",
+                    mitigation="调整启动周、解除阻塞任务或缩减项目范围后重算",
+                )
+            )
         document_instructions = self._build_document_instructions(
-            milestones=milestones, schools=schools
+            milestones=replan.milestones, schools=schools
         )
         milestones, weeks, risk_markers, document_instructions = self._llm_refine_plan(
             strategy=strategy,
@@ -61,7 +88,7 @@ class DynamicTimelineService:
         )
         return TimelinePlan(
             title=f"{cycle}申请季执行板 ({timezone})",
-            milestones=milestones,
+            milestones=replan.milestones,
             weeks=weeks,
             risk_markers=risk_markers,
             document_instructions=document_instructions,
@@ -168,6 +195,13 @@ class DynamicTimelineService:
             item.due_week = min(max(due_week, 1), total_weeks)
             scheduled.append(item)
         return scheduled
+
+    def _resolve_as_of_date(self, intelligence: AIEAgentOutput) -> date:
+        as_of_date = str(intelligence.get("as_of_date", ""))
+        try:
+            return date.fromisoformat(as_of_date)
+        except ValueError:
+            return date.today()
 
     def _build_weekly_plan(
         self, milestones: list[Milestone], total_weeks: int, schools: list[str]

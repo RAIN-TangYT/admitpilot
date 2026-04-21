@@ -11,7 +11,7 @@ AgentTask = runtime_contracts.AgentTask
 AgentResult = runtime_contracts.AgentResult
 
 
-@dataclass(slots=True)
+@dataclass
 class UserProfile:
     """用户画像与申请背景。"""
 
@@ -89,7 +89,7 @@ class SharedMemory(TypedDict, total=False):
     cds: CDSAgentOutput
 
 
-@dataclass(slots=True)
+@dataclass
 class ApplicationContext:
     """PAO 统一管理的共享上下文。"""
 

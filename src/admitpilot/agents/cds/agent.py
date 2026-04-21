@@ -55,7 +55,15 @@ class CDSAgent(BaseAgent):
                 },
             ),
         )
-        pack = self.service.build_support_pack(strategy=strategy, timeline=timeline)
+        raw_artifacts = context.constraints.get("user_artifacts", [])
+        artifacts_payload = (
+            raw_artifacts if isinstance(raw_artifacts, list) else []
+        )
+        pack = self.service.build_support_pack(
+            strategy=strategy,
+            timeline=timeline,
+            user_artifacts_payload=artifacts_payload,
+        )
         output: CDSAgentOutput = {
             "document_drafts": [
                 {
@@ -67,7 +75,8 @@ class CDSAgent(BaseAgent):
                         {
                             "slot_id": slot.slot_id,
                             "value": slot.value,
-                            "source": slot.source,
+                            "source_ref": slot.source_ref,
+                            "status": slot.status,
                             "verified": slot.verified,
                         }
                         for slot in item.fact_slots

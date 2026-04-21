@@ -9,7 +9,7 @@ from typing import Protocol
 from admitpilot.platform.common.time import ensure_utc, utc_now
 
 
-@dataclass(slots=True)
+@dataclass
 class CapabilityToken:
     """Short-lived capability token for an agent."""
 
@@ -72,7 +72,7 @@ class InMemoryCapabilityValidator:
         return scope in token.allowed_scopes
 
 
-@dataclass(slots=True)
+@dataclass
 class CapabilityManager:
     """Issue and validate capability tokens for the orchestrator."""
 

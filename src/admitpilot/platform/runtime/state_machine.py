@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from admitpilot.platform.runtime.contracts import WorkflowStatus
 
 
-@dataclass(slots=True)
+@dataclass
 class RuntimeStateMachine:
     """Validate workflow transitions."""
 
