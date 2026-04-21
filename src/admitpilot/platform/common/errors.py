@@ -14,7 +14,7 @@ class ErrorCode(str, Enum):
     RUNTIME_FAILURE = "RUNTIME_FAILURE"
 
 
-@dataclass(slots=True)
+@dataclass
 class PlatformError(Exception):
     """Typed platform error with code."""
 

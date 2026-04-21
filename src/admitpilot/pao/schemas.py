@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TypedDict
+from typing import Optional, TypedDict
 
 from admitpilot.core.schemas import AgentResult, AgentTask, ApplicationContext
 from admitpilot.platform.runtime import WorkflowStatus
 
 
-@dataclass(slots=True)
+@dataclass
 class RoutePlan:
     """任务拆解后的顺序执行计划。"""
 
@@ -26,6 +26,6 @@ class PaoGraphState(TypedDict):
     workflow_status: WorkflowStatus
     route_plan: RoutePlan
     pending_tasks: list[AgentTask]
-    current_task: AgentTask | None
+    current_task: Optional[AgentTask]
     results: list[AgentResult]
     final_summary: str

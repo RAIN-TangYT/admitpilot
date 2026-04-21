@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from admitpilot.agents.cds.consistency import check_consistency
+from admitpilot.agents.cds.facts import build_fact_slots
 from admitpilot.agents.cds.schemas import (
     ConsistencyIssue,
     DocumentDraft,
@@ -11,26 +13,55 @@ from admitpilot.agents.cds.schemas import (
     InterviewCue,
     NarrativeFactSlot,
 )
+from admitpilot.agents.cds.templates import build_cv_outline, build_sop_outline
 from admitpilot.core.schemas import DTAAgentOutput, SAEAgentOutput
+from admitpilot.core.user_artifacts import UserArtifactsBundle, parse_user_artifacts
 
 
 class CoreDocumentService:
     """负责文书叙事与面试素材生成。"""
 
     def build_support_pack(
-        self, strategy: SAEAgentOutput, timeline: DTAAgentOutput
+        self,
+        strategy: SAEAgentOutput,
+        timeline: DTAAgentOutput,
+        user_artifacts_payload: list[dict[str, str | bool]] | None = None,
     ) -> DocumentSupportPack:
         """根据策略和时间线输出文书与面试支持包。"""
         recommendations = strategy.get("recommendations", [])
         schools = [str(item.get("school", "")) for item in recommendations if item.get("school")]
         school_scope = schools or ["NUS", "NTU", "HKU", "CUHK", "HKUST"]
-        fact_slots = self._build_fact_slots(strategy=strategy, timeline=timeline)
-        drafts = self._build_document_drafts(schools=school_scope, fact_slots=fact_slots)
+        artifacts = self._load_user_artifacts(user_artifacts_payload)
+        fact_slots = self._build_fact_slots(
+            strategy=strategy, timeline=timeline, artifacts=artifacts
+        )
+        abstain, abstain_reason = self._should_abstain(fact_slots=fact_slots)
+        drafts = (
+            []
+            if abstain
+            else self._build_document_drafts(
+                schools=school_scope,
+                fact_slots=fact_slots,
+                strategy=strategy,
+                timeline=timeline,
+            )
+        )
         interview_cues = self._build_interview_cues(
             recommendations=recommendations, timeline=timeline
         )
         issues = self._check_cross_document_consistency(drafts=drafts)
+        if abstain:
+            issues.insert(
+                0,
+                ConsistencyIssue(
+                    severity="high",
+                    message=f"核心证据缺失，CDS abstain: {abstain_reason}",
+                    impacted_documents=["sop", "cv", "interview"],
+                ),
+            )
         checklist = self._build_review_checklist(issues=issues)
+        if abstain:
+            checklist.insert(0, "先补齐核心证据（project/research + source_ref）再生成正式草稿")
         return DocumentSupportPack(
             drafts=drafts,
             interview_cues=interview_cues,
@@ -39,59 +70,62 @@ class CoreDocumentService:
         )
 
     def _build_fact_slots(
-        self, strategy: SAEAgentOutput, timeline: DTAAgentOutput
+        self,
+        strategy: SAEAgentOutput,
+        timeline: DTAAgentOutput,
+        artifacts: UserArtifactsBundle,
     ) -> list[NarrativeFactSlot]:
-        """事实槽位构建骨架。
+        return build_fact_slots(artifacts=artifacts, strategy=strategy, timeline=timeline)
 
-        TODO: 接入用户真实经历解析与证据引用系统。
-        """
-        ranking = strategy.get("ranking_order", [])
-        milestones = timeline.get("milestones", [])
-        return [
-            NarrativeFactSlot(
-                slot_id="motivation_core",
-                value="申请动机与长期职业目标一致",
-                source="user_profile",
-                verified=False,
-            ),
-            NarrativeFactSlot(
-                slot_id="program_fit",
-                value=f"优先项目顺序: {', '.join(ranking[:3]) or '待补充'}",
-                source="sae_ranking",
-                verified=False,
-            ),
-            NarrativeFactSlot(
-                slot_id="execution_proof",
-                value=f"关键里程碑数量={len(milestones)}",
-                source="dta_milestones",
-                verified=False,
-            ),
-        ]
+    def _load_user_artifacts(
+        self, payload: list[dict[str, str | bool]] | None
+    ) -> UserArtifactsBundle:
+        if not payload:
+            return UserArtifactsBundle()
+        return parse_user_artifacts(payload)
+
+    def _should_abstain(self, fact_slots: list[NarrativeFactSlot]) -> tuple[bool, str]:
+        required = {"motivation_core", "execution_proof"}
+        status_by_slot = {item.slot_id: item.status for item in fact_slots}
+        missing = sorted(key for key in required if status_by_slot.get(key) == "missing")
+        if missing:
+            return True, f"missing_core_slots={','.join(missing)}"
+        return False, ""
 
     def _build_document_drafts(
-        self, schools: list[str], fact_slots: list[NarrativeFactSlot]
+        self,
+        schools: list[str],
+        fact_slots: list[NarrativeFactSlot],
+        strategy: SAEAgentOutput,
+        timeline: DTAAgentOutput,
     ) -> list[DocumentDraft]:
         drafts: list[DocumentDraft] = []
         for school in schools:
+            sop_outline, sop_risks = build_sop_outline(
+                school=school, strategy=strategy, timeline=timeline, fact_slots=fact_slots
+            )
             drafts.append(
                 DocumentDraft(
                     document_type="sop",
                     target_school=school,
                     version="v0",
-                    content_outline=["动机与问题意识", "能力证据", "课程与资源匹配", "职业目标"],
+                    content_outline=sop_outline,
                     fact_slots=fact_slots,
-                    risks=["动机表述过泛", "项目匹配证据不足"],
+                    risks=sop_risks,
                     review_status="needs_human_review",
                 )
             )
+        cv_outline, cv_risks = build_cv_outline(
+            strategy=strategy, timeline=timeline, fact_slots=fact_slots
+        )
         drafts.append(
             DocumentDraft(
                 document_type="cv",
                 target_school="shared",
                 version="v0",
-                content_outline=["教育背景", "项目经历", "实习与科研", "技能与成果"],
+                content_outline=cv_outline,
                 fact_slots=fact_slots,
-                risks=["量化指标不足", "与 SoP 事实不一致"],
+                risks=cv_risks,
                 review_status="needs_human_review",
             )
         )
@@ -118,13 +152,9 @@ class CoreDocumentService:
     def _check_cross_document_consistency(
         self, drafts: list[DocumentDraft]
     ) -> list[ConsistencyIssue]:
-        """一致性检查骨架。
-
-        TODO: 用事实图和实体对齐做自动化校验。
-        """
-        issues: list[ConsistencyIssue] = []
         has_cv = any(item.document_type == "cv" for item in drafts)
         has_sop = any(item.document_type == "sop" for item in drafts)
+        issues: list[ConsistencyIssue] = check_consistency(drafts)
         if not has_cv or not has_sop:
             issues.append(
                 ConsistencyIssue(
@@ -133,16 +163,6 @@ class CoreDocumentService:
                     impacted_documents=["sop", "cv"],
                 )
             )
-        for draft in drafts:
-            if any(slot.verified is False for slot in draft.fact_slots):
-                issues.append(
-                    ConsistencyIssue(
-                        severity="medium",
-                        message=f"{draft.document_type}:{draft.target_school} 存在未核验事实槽位",
-                        impacted_documents=[f"{draft.document_type}:{draft.target_school}"],
-                    )
-                )
-                break
         return issues
 
     def _build_review_checklist(self, issues: list[ConsistencyIssue]) -> list[str]:

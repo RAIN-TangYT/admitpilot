@@ -17,7 +17,7 @@ from admitpilot.platform.security.capability import CapabilityManager
 from admitpilot.platform.tools.registry import ToolRegistry
 
 
-@dataclass(slots=True)
+@dataclass
 class PlatformCommonBundle:
     """Composable shared platform services."""
 

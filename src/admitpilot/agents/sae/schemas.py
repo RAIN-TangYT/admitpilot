@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 
-@dataclass(slots=True)
+@dataclass
 class ProgramRecommendation:
     """单个项目推荐结果。"""
 
@@ -17,9 +18,16 @@ class ProgramRecommendation:
     risk_score: float
     overall_score: float
     reasons: list[str] = field(default_factory=list)
+    rule_breakdown: dict[str, float] = field(default_factory=dict)
+    rule_notes: list[str] = field(default_factory=list)
+    evidence: list[str] = field(default_factory=list)
+    gaps: list[str] = field(default_factory=list)
+    risk_flags: list[str] = field(default_factory=list)
+    missing_inputs: list[str] = field(default_factory=list)
+    semantic_breakdown: dict[str, Any] = field(default_factory=dict)
 
 
-@dataclass(slots=True)
+@dataclass
 class StrategicReport:
     """SAE 结构化评估报告。"""
 

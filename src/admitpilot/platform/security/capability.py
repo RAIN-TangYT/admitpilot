@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 
-@dataclass(slots=True)
+@dataclass
 class CapabilityToken:
     """Short-lived capability token for an agent."""
 
@@ -21,7 +21,7 @@ class CapabilityToken:
         return (now or datetime.utcnow()) < self.expires_at
 
 
-@dataclass(slots=True)
+@dataclass
 class CapabilityManager:
     """Issue and validate capability tokens."""
 

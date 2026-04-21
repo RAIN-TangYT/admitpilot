@@ -16,6 +16,7 @@ __pycache__/
 coverage.xml
 htmlcov/
 .venv/
+.pytest_deps/
 venv/
 env/
 ENV/

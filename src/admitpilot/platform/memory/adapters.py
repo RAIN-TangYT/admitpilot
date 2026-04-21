@@ -9,7 +9,7 @@ from typing import Any
 from admitpilot.platform.memory.contracts import MemoryRecord
 
 
-@dataclass(slots=True)
+@dataclass
 class SessionMemoryStore:
     """Namespace-isolated short-term memory with TTL."""
 
@@ -69,7 +69,7 @@ class SessionMemoryStore:
         return list(self._audit)
 
 
-@dataclass(slots=True)
+@dataclass
 class VersionedMemoryStore:
     """Versioned long-term memory store."""
 
@@ -126,7 +126,7 @@ class VersionedMemoryStore:
         return list(self._audit)
 
 
-@dataclass(slots=True)
+@dataclass
 class ArtifactObjectStore:
     """Artifact store for larger generated outputs."""
 

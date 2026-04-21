@@ -113,7 +113,7 @@ class AdmissionsIntelligenceService:
         cache_key = self._official_cache_key(
             school=school, program=program, cycle=cycle, as_of_date=as_of_date
         )
-        now = datetime.now()
+        now = datetime.utcnow()
         cached = self.official_repository.get(cache_key, as_of=now)
         if cached is not None:
             return cached, True
@@ -142,6 +142,7 @@ class AdmissionsIntelligenceService:
                 update_released=True,
                 expires_at=now + timedelta(hours=24),
             )
+            self._official_long_memory.extend(records)
         else:
             basis_records = self._historical_official_records(school=school, program=program)
             snapshot = self._build_predicted_snapshot(
@@ -164,7 +165,7 @@ class AdmissionsIntelligenceService:
         cache_key = self._case_cache_key(
             schools=schools, program=program, cycle=cycle, as_of_date=as_of_date
         )
-        now = datetime.now()
+        now = datetime.utcnow()
         cached = self.case_repository.get(cache_key, as_of=now)
         if cached is not None:
             return cached, True
@@ -285,7 +286,7 @@ class AdmissionsIntelligenceService:
                         content=f"{school} {cycle_year} 历史招生政策归档。",
                         published_date=published_date,
                         effective_date=published_date,
-                        fetched_at=datetime.now() - timedelta(days=offset * 180),
+                        fetched_at=datetime.utcnow() - timedelta(days=offset * 180),
                         source_hash=f"{school}-{cycle_year}-history",
                         quality_score=0.9,
                         confidence=self._historical_confidence(offset),

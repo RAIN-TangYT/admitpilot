@@ -1,0 +1,18 @@
+school: NTU
+program: MSAI
+hard_thresholds:
+  gpa_min: 3.3
+  ielts_min: 6.5
+soft_thresholds:
+  gpa_target: 3.6
+  ielts_target: 7.0
+recommended_backgrounds:
+  - artificial intelligence
+  - machine learning
+  - data science
+risk_flags:
+  - math_foundation_required
+  - background_screening
+missing_input_penalties:
+  ielts: 0.07
+  experience: 0.04

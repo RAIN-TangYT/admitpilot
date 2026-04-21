@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any
 
 
-@dataclass(slots=True)
+@dataclass
 class TraceCollector:
     """Collect structured trace spans."""
 
@@ -39,7 +39,7 @@ class TraceCollector:
         return list(self._spans)
 
 
-@dataclass(slots=True)
+@dataclass
 class MetricsCollector:
     """Collect counters in-memory."""
 

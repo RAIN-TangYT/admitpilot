@@ -5,17 +5,18 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
-@dataclass(slots=True)
+@dataclass
 class NarrativeFactSlot:
     """文书事实槽位。"""
 
     slot_id: str
     value: str
-    source: str
+    source_ref: str
+    status: str = "missing"  # verified / inferred / missing
     verified: bool = False
 
 
-@dataclass(slots=True)
+@dataclass
 class DocumentDraft:
     """文书草稿框架。"""
 
@@ -37,7 +38,7 @@ class ConsistencyIssue:
     impacted_documents: list[str] = field(default_factory=list)
 
 
-@dataclass(slots=True)
+@dataclass
 class InterviewCue:
     """面试高频问题与回答线索。"""
 
@@ -45,7 +46,16 @@ class InterviewCue:
     cue: str
 
 
-@dataclass(slots=True)
+@dataclass
+class ConsistencyIssue:
+    """跨文档一致性问题定义。"""
+
+    severity: str
+    message: str
+    impacted_documents: list[str] = field(default_factory=list)
+
+
+@dataclass
 class DocumentSupportPack:
     """CDS 结构化产物。"""
 

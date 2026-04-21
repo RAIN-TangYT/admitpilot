@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from admitpilot.platform.mcp.schemas import MethodSpec
 
 
-@dataclass(slots=True)
+@dataclass
 class ToolRegistry:
     """Registry that validates agent access to methods."""
 
