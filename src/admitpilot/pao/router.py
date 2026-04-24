@@ -8,7 +8,7 @@ from admitpilot.core.schemas import AgentTask
 from admitpilot.pao.schemas import RoutePlan
 
 
-@dataclass(slots=True)
+@dataclass
 class IntentRouter:
     """负责意图识别与任务拆解。"""
 

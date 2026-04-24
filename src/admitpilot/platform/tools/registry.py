@@ -33,7 +33,7 @@ class ToolDefinition:
     todo: tuple[str, ...] = field(default_factory=tuple)
 
 
-@dataclass(slots=True)
+@dataclass
 class ToolRegistry:
     """Tool registry and access control."""
 

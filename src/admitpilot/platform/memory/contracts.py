@@ -39,7 +39,7 @@ class VersionedRecord:
     created_at: datetime = field(default_factory=utc_now)
 
 
-@dataclass(slots=True)
+@dataclass
 class MemoryRecord:
     """Runtime memory item with metadata and versioning."""
 

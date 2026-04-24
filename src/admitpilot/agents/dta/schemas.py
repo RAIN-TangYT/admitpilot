@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
-@dataclass(slots=True)
+@dataclass
 class Milestone:
     """里程碑节点定义。"""
 
@@ -16,7 +16,7 @@ class Milestone:
     depends_on: list[str] = field(default_factory=list)
 
 
-@dataclass(slots=True)
+@dataclass
 class RiskMarker:
     """风险标记定义。"""
 

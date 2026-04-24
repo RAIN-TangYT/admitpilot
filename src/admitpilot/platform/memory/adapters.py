@@ -16,7 +16,7 @@ class _SessionValue:
     expires_at: datetime
 
 
-@dataclass(slots=True)
+@dataclass
 class SessionMemoryStore:
     """Namespace-isolated short-term memory with legacy compatibility helpers."""
 
@@ -88,7 +88,7 @@ class SessionMemoryStore:
         return list(self._audit)
 
 
-@dataclass(slots=True)
+@dataclass
 class VersionedMemoryStore:
     """Versioned long-term memory store with compatibility APIs."""
 
@@ -181,7 +181,7 @@ class VersionedMemoryStore:
         return list(self._audit)
 
 
-@dataclass(slots=True)
+@dataclass
 class ArtifactObjectStore:
     """Artifact store for generated outputs."""
 

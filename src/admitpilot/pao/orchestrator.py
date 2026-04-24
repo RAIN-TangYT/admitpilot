@@ -7,7 +7,7 @@ import traceback
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any, Optional, cast
 from uuid import uuid4
 
 from admitpilot.agents.aie.agent import AIEAgent
@@ -105,7 +105,7 @@ def _new_state_graph(state_type: Any) -> Any:
     return FallbackStateGraph(state_type)
 
 
-@dataclass(slots=True)
+@dataclass
 class PrincipalApplicationOrchestrator:
     """PAO: route, dispatch, aggregate, and persist shared context."""
 
@@ -509,7 +509,7 @@ class PrincipalApplicationOrchestrator:
         agent_name: str,
         reason: str,
         message: str,
-        trace: list[str] | None = None,
+        trace: Optional[list[str]] = None,
     ) -> AgentResult:
         return AgentResult(
             agent=agent_name,

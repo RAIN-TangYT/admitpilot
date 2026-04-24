@@ -32,7 +32,7 @@ class MCPServerStub:
         self.methods[method_stub.method] = method_stub
 
 
-@dataclass(slots=True)
+@dataclass
 class MCPServerRegistry:
     """MCP server registry."""
 
