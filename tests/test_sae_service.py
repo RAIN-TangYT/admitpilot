@@ -55,7 +55,7 @@ def test_evaluate_returns_ranked_recommendations() -> None:
     assert len(report.recommendations) == 2
     for item in report.recommendations:
         assert item.evidence
-        assert item.semantic_breakdown.get("method") == "fake_token_overlap"
+        assert item.semantic_breakdown.get("method") == "deterministic_token_overlap"
 
 
 def test_sae_tier_thresholds_follow_score_direction() -> None:

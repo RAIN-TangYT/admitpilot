@@ -1,11 +1,13 @@
 from typing import cast
 
 from admitpilot.agents.aie.agent import AIEAgent
-from admitpilot.agents.aie.gateways import NullCaseSourceGateway, OfficialLibrarySourceGateway
-from admitpilot.agents.aie.repositories import (
-    InMemoryOfficialSnapshotRepository,
-    JsonOfficialSnapshotRepository,
+from admitpilot.agents.aie.gateways import (
+    JsonCaseLibrarySourceGateway,
+    OfficialLibrarySourceGateway,
 )
+from admitpilot.agents.aie.repositories import JsonOfficialSnapshotRepository
+from admitpilot.agents.sae.agent import SAEAgent
+from admitpilot.agents.sae.semantic import EmbeddingSemanticMatcher, FakeSemanticMatcher
 from admitpilot.app import build_application
 from admitpilot.config import AdmitPilotSettings
 
@@ -27,11 +29,13 @@ def test_build_application_uses_supplied_demo_settings() -> None:
     assert application.orchestrator.agents is application.agents
     assert aie_agent.service.llm_client.enabled is True
     assert isinstance(aie_agent.service.official_gateway, OfficialLibrarySourceGateway)
-    assert isinstance(aie_agent.service.official_repository, InMemoryOfficialSnapshotRepository)
-    assert isinstance(aie_agent.service.case_gateway, NullCaseSourceGateway)
+    assert isinstance(aie_agent.service.official_repository, JsonOfficialSnapshotRepository)
+    assert isinstance(aie_agent.service.case_gateway, JsonCaseLibrarySourceGateway)
     library_gateway = aie_agent.service.official_gateway
     repository = cast(JsonOfficialSnapshotRepository, library_gateway.repository)
     assert str(repository.path).endswith("official_library.json")
+    sae_agent = cast(SAEAgent, application.agents["sae"])
+    assert isinstance(sae_agent.service.semantic_matcher, EmbeddingSemanticMatcher)
 
 
 def test_build_application_keeps_test_mode_llm_disabled_without_api_key() -> None:
@@ -39,7 +43,12 @@ def test_build_application_keeps_test_mode_llm_disabled_without_api_key() -> Non
 
     application = build_application(settings=settings)
     aie_agent = cast(AIEAgent, application.agents["aie"])
+    sae_agent = cast(SAEAgent, application.agents["sae"])
 
     assert application.settings.run_mode == "test"
     assert application.platform_bundle.settings.run_mode == "test"
     assert aie_agent.service.llm_client.enabled is False
+    assert isinstance(aie_agent.service.official_repository, JsonOfficialSnapshotRepository)
+    repository = cast(JsonOfficialSnapshotRepository, aie_agent.service.official_repository)
+    assert str(repository.path).endswith("runtime_official_library.test.json")
+    assert isinstance(sae_agent.service.semantic_matcher, FakeSemanticMatcher)

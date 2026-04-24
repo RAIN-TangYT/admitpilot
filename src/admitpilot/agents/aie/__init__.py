@@ -4,6 +4,7 @@ from admitpilot.agents.aie.agent import AIEAgent
 from admitpilot.agents.aie.gateways import (
     CatalogOfficialSourceGateway,
     FixtureCaseSourceGateway,
+    JsonCaseLibrarySourceGateway,
     NullCaseSourceGateway,
     OfficialLibrarySourceGateway,
 )
@@ -22,6 +23,7 @@ __all__ = [
     "AdmissionsIntelligenceService",
     "CatalogOfficialSourceGateway",
     "FixtureCaseSourceGateway",
+    "JsonCaseLibrarySourceGateway",
     "NullCaseSourceGateway",
     "OfficialLibrarySourceGateway",
     "StubOfficialSourceGateway",

@@ -135,7 +135,12 @@ class PrincipalApplicationOrchestrator:
                     llm_client=llm_client,
                 )
             ),
-            "sae": SAEAgent(service=StrategicAdmissionsService(llm_client=llm_client)),
+            "sae": SAEAgent(
+                service=StrategicAdmissionsService(
+                    llm_client=llm_client,
+                    settings=settings,
+                )
+            ),
             "dta": DTAAgent(service=DynamicTimelineService(llm_client=llm_client)),
             "cds": CDSAgent(service=CoreDocumentService(llm_client=llm_client)),
         }

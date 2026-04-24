@@ -1,7 +1,12 @@
+import json
 from datetime import date
 from pathlib import Path
 
-from admitpilot.agents.aie.gateways import CatalogOfficialSourceGateway, FixtureCaseSourceGateway
+from admitpilot.agents.aie.gateways import (
+    CatalogOfficialSourceGateway,
+    FixtureCaseSourceGateway,
+    JsonCaseLibrarySourceGateway,
+)
 from admitpilot.agents.aie.repositories import JsonOfficialSnapshotRepository
 from admitpilot.agents.aie.runtime import build_runtime_aie_service
 from admitpilot.agents.aie.service import AdmissionsIntelligenceService
@@ -69,6 +74,68 @@ def test_runtime_aie_service_reads_official_library_by_default() -> None:
     assert pack.case_snapshot is not None
     assert pack.case_snapshot.sample_size == 0
     assert pack.case_snapshot.patterns == []
+
+
+def test_runtime_aie_service_reads_case_library_by_default() -> None:
+    output_dir = Path(".pytest-local")
+    output_dir.mkdir(exist_ok=True)
+    official_output_path = output_dir / "runtime_official_library_for_case.json"
+    case_output_path = output_dir / "runtime_case_library.json"
+    if official_output_path.exists():
+        official_output_path.unlink()
+    if case_output_path.exists():
+        case_output_path.unlink()
+    _seed_official_library(official_output_path)
+    case_output_path.write_text(
+        json.dumps(
+            {
+                "cycle": "2026",
+                "generated_at": "2026-04-20T10:46:59Z",
+                "records": [
+                    {
+                        "candidate_fingerprint": "anon-demo-nus",
+                        "school": "NUS",
+                        "program": "MCOMP_CS",
+                        "cycle": "2026",
+                        "source_type": "community",
+                        "source_url": "https://example.com/nus-case",
+                        "background_summary": "Research-heavy CS applicant.",
+                        "outcome": "offer",
+                        "captured_at": "2026-04-20T10:46:59Z",
+                        "source_site_score": 0.62,
+                        "evidence_completeness": 0.58,
+                        "cross_source_consistency": 0.57,
+                        "freshness_score": 0.52,
+                        "confidence": 0.64,
+                        "credibility_label": "medium",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    settings = AdmitPilotSettings(
+        run_mode="test",
+        official_library_path=str(official_output_path),
+        case_library_path=str(case_output_path),
+    )
+
+    service = build_runtime_aie_service(settings=settings)
+    pack = service.retrieve(
+        query="结合案例看 NUS 申请竞争度",
+        cycle="2026",
+        schools=["NUS"],
+        program="MCOMP_CS",
+        as_of_date=AS_OF_DATE,
+    )
+
+    assert isinstance(service.case_gateway, JsonCaseLibrarySourceGateway)
+    assert len(pack.case_long_memory) == 1
+    assert pack.case_long_memory[0].school == "NUS"
+    assert pack.case_snapshot is not None
+    assert pack.case_snapshot.sample_size == 1
 
 
 def test_aie_service_enforces_supported_school_scope() -> None:

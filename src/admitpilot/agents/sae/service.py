@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Literal, cast
 
 from admitpilot.agents.sae.prompts import SYSTEM_PROMPT
 from admitpilot.agents.sae.rules import ProgramRule, load_program_rules
@@ -14,6 +15,7 @@ from admitpilot.agents.sae.semantic import (
     SemanticMatchResult,
     build_semantic_matcher,
 )
+from admitpilot.config import AdmitPilotSettings
 from admitpilot.core.schemas import AIEAgentOutput, UserProfile
 from admitpilot.domain.catalog import DEFAULT_ADMISSIONS_CATALOG, AdmissionsCatalog
 from admitpilot.platform.llm.openai import OpenAIClient
@@ -28,16 +30,32 @@ class StrategicAdmissionsService:
     def __init__(
         self,
         llm_client: OpenAIClient | None = None,
+        settings: AdmitPilotSettings | None = None,
         catalog: AdmissionsCatalog = DEFAULT_ADMISSIONS_CATALOG,
         rules: dict[str, ProgramRule] | None = None,
         semantic_matcher: SemanticMatcher | None = None,
     ) -> None:
-        self.llm_client = llm_client or OpenAIClient()
+        self.llm_client = llm_client or OpenAIClient(settings=AdmitPilotSettings(run_mode="test"))
+        self.settings = settings
         self.catalog = catalog
         self.rules = rules if rules is not None else load_program_rules(self._DEFAULT_RULES_DIR)
         self.rule_scorer = RuleScorer()
+        matcher_kind = cast(
+            Literal["fake", "embedding"],
+            settings.semantic_matcher_kind if settings is not None else "fake",
+        )
         self.semantic_matcher: SemanticMatcher = (
-            semantic_matcher if semantic_matcher is not None else build_semantic_matcher("fake")
+            semantic_matcher
+            if semantic_matcher is not None
+            else build_semantic_matcher(
+                matcher_kind,
+                llm_client=self.llm_client,
+                embedding_model=(
+                    settings.openai_embedding_model
+                    if settings is not None
+                    else self.llm_client.embedding_model
+                ),
+            )
         )
 
     def evaluate(self, user_profile: UserProfile, intelligence: AIEAgentOutput) -> StrategicReport:

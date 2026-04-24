@@ -1,6 +1,6 @@
 # AdmitPilot Current Implementation Snapshot
 
-- 文档日期：`2026-04-20`
+- 文档日期：`2026-04-24`
 - 适用范围：当前仓库代码基线
 - 文档目的：给 GitHub 读者一个与代码一致的实现快照
 
@@ -24,16 +24,18 @@
 - OpenAI 默认模型接入完成，默认模型是 `gpt-5.4-nano`
 - 配置层、应用工厂、API 健康检查骨架已接入
 - AIE 运行时默认读取 `data/official_library/official_library.json`
+- AIE 运行时默认读取 `data/case_library/case_library.json`
 - AIE 已完成学校/项目目录、官网抓取、页面解析、快照 diff 主链路
 - `refresh_official_library.py` 已可真实执行 live 官方页刷新，且只更新官方库，不更新案例库
+- SAE 已完成规则文件、规则打分、可替换语义匹配与证据化解释
+- DTA 已完成拓扑排序、deadline 逆排、延误重排与冲突检测
+- CDS 已完成用户证据模型、fact slots、模板层与一致性检查
 - 基础测试已覆盖 orchestrator、AIE、SAE、CDS、settings、app factory、API health
 
 当前项目尚未完成：
 - AIE 更复杂官网结构、反爬页面与边界规则适配
-- SAE 规则文件与语义检索
-- DTA 拓扑排序、逆排与自动重排
-- CDS 真实证据抽取与跨文档一致性引擎
 - Postgres / Redis / 对象存储等生产依赖
+- 异步 worker、业务 API、发布清单等上线准备
 
 ## 3. 当前目录说明
 
@@ -95,12 +97,17 @@ python -m uvicorn admitpilot.api.main:app --reload
 ```env
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-5.4-nano
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_TIMEOUT_SECONDS=30
+ADMITPILOT_SEMANTIC_MATCHER_KIND=
+ADMITPILOT_CASE_LIBRARY_PATH=data/case_library/case_library.json
 ```
 
 说明：
 - 当前仓库已不再使用 `Qwen / DashScope`
+- SAE 非 test 模式默认使用 embedding matcher；test 模式默认使用 deterministic fake matcher
+- 无 OpenAI API key 时，embedding matcher 使用本地 hashing fallback，保证离线演示可运行
 - 若后续更换模型，应统一修改 settings、LLM client、README 与测试
 
 ## 6. 当前 AIE 学校与项目目录
@@ -263,31 +270,29 @@ python -m admitpilot.debug.refresh_official_library --cycle 2026
 
 ```bash
 $env:PYTHONPATH='src'
-python -m admitpilot.debug.refresh_official_library --cycle 2026
-python -m ruff check src/admitpilot tests
-python -m mypy
 python -m pytest -q
-python -m admitpilot.main
 ```
 
 说明：
 - 仍可能出现 `.pytest_cache` 权限 warning，这属于本地目录权限问题，不影响当前代码正确性
-- `2026-04-20` 已补齐 `tests/fixtures/official_pages/invalid_mscs_2026_deadline.html`，当前全量 `pytest` 可通过
+- `2026-04-24` 全量 `pytest` 可通过
+- `ruff` / `mypy` 当前仍有静态检查债，包括行长、导入排序、第三方 stub、测试字典类型和少量 typing 问题；这些不影响当前演示链路回归，但不应记录为已通过
 
 ## 9. 当前已知限制
 
-- AIE 运行时默认读取官方库；`fixture` 仅保留给测试使用
+- AIE 运行时默认读取官方库与 JSON 案例库；`fixture` 仅保留给测试使用
+- test 模式会把官方库复制到 `.pytest-local/runtime_official_library.test.json` 作为影子副本，避免测试写脏 tracked 数据文件
 - AIE live 已覆盖全部目录项目的 URL 配置，但仍不能对全部项目稳定抓到并结构化解析官方页
-- SAE 仍是示意性评分框架
-- DTA 仍是规则化排期，不是完整调度器
-- CDS 仍是支持包生成器，不是最终文书定稿器
+- SAE 已完成规则化评分和可替换语义匹配，但不是生产级推荐系统
+- DTA 已完成演示范围的调度与重排，但不是生产级日历/任务系统
+- CDS 已完成证据化文书支持，不生成可直接提交的终稿
 - 平台层目前是“可插拔接口 + 内存实现”，不是生产基础设施
 
 ## 10. 当前提交到 GitHub 的解释口径
 
 如果现在提交到 GitHub，推荐描述为：
 
-> 一个面向留学申请场景的多代理原型系统，已完成核心编排链路、统一配置、基础 API 骨架，以及基于官方库的 AIE 情报链路；live 官方页刷新已接入，但真实外部数据源覆盖、生产化存储与高级决策模块仍在实施中。
+> 一个面向留学申请场景的多代理原型系统，已完成核心编排链路、统一配置、基础 API 骨架、基于官方库和案例库的 AIE 情报链路，以及 SAE/DTA/CDS 的答辩演示范围能力；live 官方页刷新已接入，但真实外部数据源覆盖、生产化存储、异步执行与上线准备仍在实施范围之外。
 
 不建议描述为：
 - “已完成真实产品”

@@ -1,4 +1,5 @@
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -13,20 +14,25 @@ def test_load_program_rules_from_repo_data() -> None:
     assert rules["HKU:MSCS"].hard_thresholds["gpa_min"] >= 3.0
 
 
-def test_load_program_rules_rejects_missing_fields(tmp_path: Path) -> None:
-    broken = tmp_path / "broken.yaml"
-    broken.write_text(
-        "school: NUS\nprogram: MCOMP_CS\nhard_thresholds:\n  gpa_min: 3.4\n",
-        encoding="utf-8",
-    )
-    with pytest.raises(RuleLoadError):
-        load_program_rules(tmp_path)
+def test_load_program_rules_rejects_missing_fields() -> None:
+    broken = Path("broken.yaml")
+    payloads = {
+        broken: "school: NUS\nprogram: MCOMP_CS\nhard_thresholds:\n  gpa_min: 3.4\n",
+    }
+    with patch.object(Path, "glob", return_value=[broken]), patch.object(
+        Path,
+        "read_text",
+        autospec=True,
+        side_effect=lambda self, encoding="utf-8": payloads[self],
+    ):
+        with pytest.raises(RuleLoadError):
+            load_program_rules(Path("unused"))
 
 
-def test_load_program_rules_rejects_invalid_score_type(tmp_path: Path) -> None:
-    broken = tmp_path / "broken.yaml"
-    broken.write_text(
-        "\n".join(
+def test_load_program_rules_rejects_invalid_score_type() -> None:
+    broken = Path("broken.yaml")
+    payloads = {
+        broken: "\n".join(
             [
                 "school: NUS",
                 "program: MCOMP_CS",
@@ -42,7 +48,12 @@ def test_load_program_rules_rejects_invalid_score_type(tmp_path: Path) -> None:
                 "  ielts: 0.06",
             ]
         ),
-        encoding="utf-8",
-    )
-    with pytest.raises(RuleLoadError):
-        load_program_rules(tmp_path)
+    }
+    with patch.object(Path, "glob", return_value=[broken]), patch.object(
+        Path,
+        "read_text",
+        autospec=True,
+        side_effect=lambda self, encoding="utf-8": payloads[self],
+    ):
+        with pytest.raises(RuleLoadError):
+            load_program_rules(Path("unused"))

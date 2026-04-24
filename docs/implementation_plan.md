@@ -1,17 +1,18 @@
 # AdmitPilot 实施计划（当前按课堂/答辩演示目标执行）
 
-- 文档日期：`2026-04-20`
+- 文档日期：`2026-04-24`
 - 适用代码基线：`src/admitpilot`
 - 文档目标：把当前课程 demo 原型推进到可稳定答辩演示的版本；上线相关内容保留为后续扩展参考
 - 执行原则：每一步都要小、具体、可验证；每一步完成后必须先通过测试，再进入下一步
 
 ## 当前范围裁剪（课堂/答辩演示）
 
-1. 当前执行终点设为 `Phase 5 / Step 21`，以完成 `AIE -> SAE -> DTA -> CDS` 的稳定演示链路为准。
-2. `Phase 1-2` 已完成，当前主线只推进 `Phase 3-5`。
+1. 当前执行终点仍为 `Phase 5 / Step 21`，`AIE -> SAE -> DTA -> CDS` 稳定演示链路已完成。
+2. `Phase 1-5` 已完成课堂/答辩演示范围收口。
 3. `Phase 6-7` 保留在本文件中，作为未来真实应用化的预留步骤；本轮答辩范围内默认不执行。
-4. 运行时基线以当前仓库状态为准：AIE 默认读取 `data/official_library/official_library.json`，`fixture` 仅保留测试使用，`refresh_official_library.py` 是官方库刷新入口。
-5. 如果后续目标仍仅限课堂演示，优先完成“规则化选校、deadline 逆排、证据化文书支持、稳定 demo 输出”四件事，不扩展部署、数据库、异步 worker 等生产化内容。
+4. 运行时基线以当前仓库状态为准：AIE 默认读取 `data/official_library/official_library.json` 和 `data/case_library/case_library.json`；测试模式使用 `.pytest-local/runtime_official_library.test.json` 作为官方库影子副本；`fixture` 仅保留测试使用；`refresh_official_library.py` 是官方库刷新入口。
+5. SAE 在非 test 模式默认使用 embedding matcher，test 模式保留 deterministic fake matcher；无 API key 时 embedding matcher 使用本地 hashing fallback，保证离线演示可运行。
+6. 如果后续目标仍仅限课堂演示，不扩展部署、数据库、异步 worker 等生产化内容；如果目标转向真实应用化，从 `Phase 6 / Step 22` 开始。
 
 ## 0. 执行约束
 
@@ -899,11 +900,11 @@ python -m pytest -q
 
 如果现在立刻开工，推荐按这个顺序：
 
-1. Step 11：设计学校项目规则文件
-2. Step 12：实现规则打分引擎
-3. Step 13：引入可替换的语义匹配适配器
+1. Step 22：引入 Postgres 版版本化存储
+2. Step 23：引入 Redis 版会话缓存
+3. Step 24：引入对象存储适配器
 
 原因：
 
-- 当前基础设施和 AIE 已收口，后续演示质量主要取决于 SAE 的真实性和可解释性。
-- 只有先把 SAE 站稳，DTA 的时间线和 CDS 的文书支持才有稳定上游输入。
+- 当前 `Phase 1-5` 已完成课堂/答辩演示范围，继续推进时主要风险转向持久化、外部缓存、artifact 存储和运行时治理。
+- 若仍只准备课堂演示，优先保持官方库、案例库和固定 demo 输入稳定，不进入生产化依赖接入。

@@ -1,6 +1,6 @@
 # AdmitPilot Agent Engineering Architecture
 
-- 文档日期：`2026-04-20`
+- 文档日期：`2026-04-24`
 - 文档定位：当前代码基线的高层架构说明
 - 规范优先级：
   - 产品目标与课程背景：`docs/Project_Proposal_Group 26 (TANG Yutong, CHEN Jinghao, ZHANG Yufei, SHI Junren).docx`
@@ -20,13 +20,17 @@ AdmitPilot 当前是一个“可演示的多代理申请支持原型”，不是
 - 基础平台层骨架：memory / runtime / governance / security / observability
 - OpenAI 默认模型接入：`gpt-5.4-nano`
 - AIE 运行时默认读取官方库：`data/official_library/official_library.json`
+- AIE 运行时默认读取案例库：`data/case_library/case_library.json`
 - AIE live 官方刷新入口：`refresh_official_library.py`
 - demo 默认按“学校 -> 项目”组合运行，而不是统一单项目
+- SAE 规则打分、可替换语义匹配与证据化解释
+- DTA 拓扑调度、deadline 逆排、延误重排与冲突检测
+- CDS 用户证据模型、fact slots、模板层与一致性检查
 
 尚未具备：
 - 全量院校项目的 live 官方页覆盖
 - 生产级数据库、缓存、对象存储
-- 规则 DSL、排期器、证据抽取器
+- 异步 worker、业务 API 与上线发布清单
 - 生产级治理闸门与可观测链路
 
 ## 2. 分层结构
@@ -54,9 +58,9 @@ AdmitPilot 当前是一个“可演示的多代理申请支持原型”，不是
 
 职责：
 - `AIE`：招生情报、官方库刷新与快照
-- `SAE`：选校评估与风险排序
-- `DTA`：时间线与里程碑计划
-- `CDS`：文书支持与一致性检查
+- `SAE`：规则化选校评估、语义匹配与风险排序
+- `DTA`：时间线、deadline 逆排与里程碑计划
+- `CDS`：证据化文书支持、模板提纲与一致性检查
 
 每个 agent 当前基本结构：
 - `agent.py`：代理入口
@@ -112,6 +116,13 @@ AdmitPilot 当前是一个“可演示的多代理申请支持原型”，不是
 - CLI：`python -m admitpilot.main`
 - API：`python -m uvicorn admitpilot.api.main:app --reload`
 - 官方库刷新：`python -m admitpilot.debug.refresh_official_library --cycle 2026`
+
+运行时数据基线：
+
+- AIE official：`data/official_library/official_library.json`
+- AIE case：`data/case_library/case_library.json`
+- AIE test official shadow：`.pytest-local/runtime_official_library.test.json`
+- SAE matcher：非 test 模式默认 `embedding`，test 模式默认 `fake`
 
 ## 4. 模块边界
 

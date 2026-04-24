@@ -1,9 +1,9 @@
-"""AIE data-source gateways backed by catalog, fixtures, and parsers."""
+"""AIE data-source gateways backed by catalog, fixtures, parsers, and JSON libraries."""
 
 from __future__ import annotations
 
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Literal, Protocol
 
@@ -27,10 +27,12 @@ from admitpilot.agents.aie.repositories import (
 )
 from admitpilot.agents.aie.schemas import CaseRecord, OfficialAdmissionRecord
 from admitpilot.domain.catalog import DEFAULT_ADMISSIONS_CATALOG, AdmissionsCatalog
+from admitpilot.platform.common.time import ensure_utc
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _DEFAULT_OFFICIAL_FIXTURE_ROOT = _REPO_ROOT / "tests" / "fixtures" / "official_pages"
 _DEFAULT_CASE_FIXTURE_ROOT = _REPO_ROOT / "tests" / "fixtures" / "cases"
+_DEFAULT_CASE_LIBRARY_PATH = _REPO_ROOT / "data" / "case_library" / "case_library.json"
 
 
 class OfficialSourceGateway(Protocol):
@@ -312,6 +314,89 @@ class FixtureCaseSourceGateway:
             as_of_date=as_of_date,
             catalog=self.catalog,
         )
+
+
+class JsonCaseLibrarySourceGateway:
+    """Case source gateway backed by the persisted case library JSON."""
+
+    def __init__(
+        self,
+        *,
+        catalog: AdmissionsCatalog = DEFAULT_ADMISSIONS_CATALOG,
+        path: Path | None = None,
+    ) -> None:
+        self.catalog = catalog
+        self.path = path or _DEFAULT_CASE_LIBRARY_PATH
+
+    def fetch_case_records(
+        self,
+        schools: list[str],
+        program: str,
+        cycle: str,
+        as_of_date: date,
+    ) -> list[CaseRecord]:
+        del as_of_date
+        if not self.path.exists():
+            return []
+        payload = json.loads(self.path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            return []
+        raw_records = payload.get("records", [])
+        if not isinstance(raw_records, list):
+            return []
+        allowed_schools = set(self.catalog.normalize_school_scope(schools))
+        normalized_program = self.catalog.normalize_program_code(program) or "MSCS"
+        records: list[CaseRecord] = []
+        for item in raw_records:
+            if not isinstance(item, dict):
+                continue
+            record = self._deserialize_case_record(item)
+            if record is None:
+                continue
+            if record.cycle != cycle:
+                continue
+            if record.school not in allowed_schools:
+                continue
+            if record.program != normalized_program:
+                continue
+            records.append(record)
+        return records
+
+    def _deserialize_case_record(self, payload: dict[str, object]) -> CaseRecord | None:
+        school = self.catalog.normalize_school_code(str(payload.get("school", "")))
+        program = self.catalog.normalize_program_code(str(payload.get("program", "")))
+        if school is None or program is None:
+            return None
+        captured_at_raw = str(payload.get("captured_at", "")).strip()
+        if not captured_at_raw:
+            return None
+        captured_at = ensure_utc(datetime.fromisoformat(captured_at_raw.replace("Z", "+00:00")))
+        return CaseRecord(
+            candidate_fingerprint=str(payload.get("candidate_fingerprint", "")).strip(),
+            school=school,
+            program=program,
+            cycle=str(payload.get("cycle", "")).strip(),
+            source_type=str(payload.get("source_type", "community")).strip() or "community",
+            source_url=str(payload.get("source_url", "")).strip(),
+            background_summary=str(payload.get("background_summary", "")).strip(),
+            outcome=str(payload.get("outcome", "")).strip().lower(),
+            captured_at=captured_at,
+            source_site_score=self._to_float(payload.get("source_site_score", 0.0)),
+            evidence_completeness=self._to_float(payload.get("evidence_completeness", 0.0)),
+            cross_source_consistency=self._to_float(
+                payload.get("cross_source_consistency", 0.0)
+            ),
+            freshness_score=self._to_float(payload.get("freshness_score", 0.0)),
+            confidence=self._to_float(payload.get("confidence", 0.0)),
+            credibility_label=str(payload.get("credibility_label", "medium")).strip() or "medium",
+        )
+
+    def _to_float(self, value: object) -> float:
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str) and value.strip():
+            return float(value)
+        return 0.0
 
 
 class NullCaseSourceGateway:
