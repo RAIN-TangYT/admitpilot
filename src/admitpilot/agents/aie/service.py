@@ -30,6 +30,7 @@ from admitpilot.agents.aie.schemas import (
     OfficialCycleSnapshot,
 )
 from admitpilot.agents.aie.snapshots import diff_official_record, record_identity
+from admitpilot.config import AdmitPilotSettings
 from admitpilot.domain.catalog import DEFAULT_ADMISSIONS_CATALOG, AdmissionsCatalog
 from admitpilot.platform.common.time import utc_now, utc_today
 from admitpilot.platform.llm.openai import OpenAIClient
@@ -54,7 +55,7 @@ class AdmissionsIntelligenceService:
         self.official_gateway = official_gateway or OfficialLibrarySourceGateway(catalog=catalog)
         self.case_gateway = case_gateway or NullCaseSourceGateway()
         self.case_repository = case_repository or InMemoryCaseSnapshotRepository()
-        self.llm_client = llm_client or OpenAIClient()
+        self.llm_client = llm_client or OpenAIClient(settings=AdmitPilotSettings(run_mode="test"))
         self._live_source_urls = build_live_source_url_map()
         self._official_long_memory = self._build_official_long_memory()
         self._case_long_memory: list[CaseRecord] = []

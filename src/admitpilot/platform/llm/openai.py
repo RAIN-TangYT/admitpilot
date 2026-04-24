@@ -61,6 +61,7 @@ class OpenAIClient:
     settings: AdmitPilotSettings | None = None
     api_key: str = ""
     model: str = ""
+    embedding_model: str = ""
     base_url: str = ""
     timeout_seconds: int = 30
 
@@ -69,6 +70,8 @@ class OpenAIClient:
         self.settings = effective_settings
         if not self.model:
             self.model = effective_settings.openai_model
+        if not self.embedding_model:
+            self.embedding_model = effective_settings.openai_embedding_model
         if not self.base_url:
             self.base_url = effective_settings.openai_base_url
         if not self.api_key:
@@ -99,6 +102,54 @@ class OpenAIClient:
             response_format="json_object",
         )
         return _extract_json_object(response.content)
+
+    def embed_texts(self, texts: list[str], model: str | None = None) -> list[list[float]]:
+        if not texts:
+            return []
+        api_key = self.api_key.strip() or _resolve_openai_api_key(settings=self.settings)
+        url = self.base_url.rstrip("/") + "/embeddings"
+        payload = {
+            "model": model or self.embedding_model,
+            "input": texts,
+        }
+        request = urllib.request.Request(
+            url=url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as resp:
+                body = resp.read().decode("utf-8")
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", errors="replace")
+            raise RuntimeError(
+                f"OpenAI embedding request failed: HTTP {e.code} {e.reason}: {detail}"
+            ) from e
+        except urllib.error.URLError as e:
+            raise RuntimeError(f"OpenAI embedding request failed: {e.reason}") from e
+        raw = json.loads(body)
+        data = raw.get("data", [])
+        if not isinstance(data, list):
+            raise RuntimeError("OpenAI embedding response missing data list.")
+        indexed_rows: list[tuple[int, list[float]]] = []
+        for item in data:
+            if not isinstance(item, dict):
+                raise RuntimeError("OpenAI embedding row must be an object.")
+            embedding = item.get("embedding")
+            if not isinstance(embedding, list):
+                raise RuntimeError("OpenAI embedding row missing embedding list.")
+            indexed_rows.append(
+                (
+                    int(item.get("index", len(indexed_rows))),
+                    [float(value) for value in embedding],
+                )
+            )
+        indexed_rows.sort(key=lambda row: row[0])
+        return [row[1] for row in indexed_rows]
 
     def _create_response(
         self,

@@ -4,14 +4,18 @@ AdmitPilot 是一个面向留学申请场景的多代理编排原型。系统由
 `AIE / SAE / DTA / CDS` 四类代理，当前聚焦 `NUS / NTU / HKU / CUHK / HKUST`
 五校泛计算机项目的情报、策略、时间线与文书支持。
 
-当前仓库状态是“可演示原型”，不是生产应用。核心 CLI 流程与测试可运行，但
-全量 live 官方页覆盖、持久化后端、规则引擎、排期器与文书证据系统仍在实施中。
+当前仓库状态是“可演示原型”，不是生产应用。核心 CLI 流程与测试可运行，
+`Phase 1-5` 的答辩演示链路已收口；全量 live 官方页覆盖、生产持久化后端、
+异步任务与上线准备仍未进入当前范围。
 
 ## 当前基线
 
 - 默认 LLM 提供方：OpenAI
 - 默认模型：`gpt-5.4-nano`
 - AIE 运行时默认读取：`data/official_library/official_library.json`
+- AIE 案例库默认读取：`data/case_library/case_library.json`
+- AIE 测试模式官方库写入隔离到：`.pytest-local/runtime_official_library.test.json`
+- SAE 非 test 模式默认语义匹配：`embedding`；test 模式默认：`fake`
 - 官方库刷新入口：`python -m admitpilot.debug.refresh_official_library --cycle 2026`
 - 默认 demo 项目组合：
   - `NUS -> MCOMP_CS`
@@ -19,12 +23,11 @@ AdmitPilot 是一个面向留学申请场景的多代理编排原型。系统由
   - `HKU -> MSCS`
   - `CUHK -> MSCS`
   - `HKUST -> MSIT`
-- 已验证命令：
-  - `python -m admitpilot.debug.refresh_official_library --cycle 2026`
-  - `python -m ruff check src tests`
-  - `python -m mypy src tests`
+- 最近验证命令：
   - `python -m pytest -q`
-  - `python -m admitpilot.main`
+- 当前静态检查状态：
+  - `python -m ruff check src tests` 仍有行长、import 顺序和少量 typing 风格问题
+  - `python -m mypy src tests` 仍有类型标注、第三方 stub 和测试字典类型问题
 - 推荐运行环境：`admitpilot` conda 环境
 
 ## 代码结构
@@ -65,8 +68,11 @@ python -m pip install -r requirements.txt
 ```env
 OPENAI_API_KEY=your-key
 OPENAI_MODEL=gpt-5.4-nano
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_TIMEOUT_SECONDS=30
+ADMITPILOT_SEMANTIC_MATCHER_KIND=
+ADMITPILOT_CASE_LIBRARY_PATH=data/case_library/case_library.json
 ```
 
 ## 运行方式
@@ -91,23 +97,21 @@ python -m uvicorn admitpilot.api.main:app --reload
 
 ```bash
 $env:PYTHONPATH='src'
-python -m admitpilot.debug.refresh_official_library --cycle 2026
-python -m ruff check src tests
-python -m mypy src tests
 python -m pytest -q
-python -m admitpilot.main
 ```
 
 说明：
-- `2026-04-20` 已补齐测试负例 fixture：`tests/fixtures/official_pages/invalid_mscs_2026_deadline.html`，`python -m pytest -q` 全量可通过。
+- `2026-04-24` 全量 `pytest` 可通过。
+- `ruff` / `mypy` 当前还有静态检查债，未作为本轮 docs 更新的通过项记录。
 
 ## 当前限制
 
 - `AIE` 运行时默认读取官方库，`fixture` 仅保留给测试使用。
+- `AIE` 运行时默认读取 JSON 案例库，不再使用空 case gateway。
 - `AIE` 已支持 live 官方页刷新，但还没有覆盖全部目录项目；当前支持矩阵见 `docs/project_full_documentation.md`。
-- `SAE` 仍包含规则与语义匹配占位逻辑。
-- `DTA` 尚未完成拓扑排序、deadline 逆排与自动重排。
-- `CDS` 尚未接入真实经历证据抽取与一致性图谱。
+- `SAE` 已完成规则打分与可替换语义匹配；无 API key 时 embedding matcher 会使用本地 fallback。
+- `DTA` 已完成拓扑排序、deadline 逆排与自动重排的演示范围实现。
+- `CDS` 已完成结构化证据、fact slots、模板层与一致性检查的演示范围实现。
 - 平台层默认仍是内存适配器，未落地 PostgreSQL / Redis / Object Storage。
 
 ## PyCharm 说明

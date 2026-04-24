@@ -41,7 +41,12 @@ def build_default_agents(settings: AdmitPilotSettings | None = None) -> dict[str
                 llm_client=llm_client,
             )
         ),
-        "sae": SAEAgent(service=StrategicAdmissionsService(llm_client=llm_client)),
+        "sae": SAEAgent(
+            service=StrategicAdmissionsService(
+                llm_client=llm_client,
+                settings=effective_settings,
+            )
+        ),
         "dta": DTAAgent(service=DynamicTimelineService(llm_client=llm_client)),
         "cds": CDSAgent(service=CoreDocumentService(llm_client=llm_client)),
     }

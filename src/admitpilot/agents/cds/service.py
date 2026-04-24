@@ -16,6 +16,7 @@ from admitpilot.agents.cds.schemas import (
     NarrativeFactSlot,
 )
 from admitpilot.agents.cds.templates import build_cv_outline, build_sop_outline
+from admitpilot.config import AdmitPilotSettings
 from admitpilot.core.schemas import DTAAgentOutput, SAEAgentOutput
 from admitpilot.core.user_artifacts import UserArtifactsBundle, parse_user_artifacts
 from admitpilot.platform.llm.openai import OpenAIClient
@@ -25,7 +26,7 @@ class CoreDocumentService:
     """负责文书叙事与面试素材生成。"""
 
     def __init__(self, llm_client: OpenAIClient | None = None) -> None:
-        self.llm_client = llm_client or OpenAIClient()
+        self.llm_client = llm_client or OpenAIClient(settings=AdmitPilotSettings(run_mode="test"))
 
     def build_support_pack(
         self,

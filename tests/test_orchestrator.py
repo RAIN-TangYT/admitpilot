@@ -58,12 +58,26 @@ def _build_orchestrator() -> PrincipalApplicationOrchestrator:
     )
 
 
+def _complete_profile() -> UserProfile:
+    return UserProfile(
+        degree_level="bachelor",
+        major_interest="Computer Science",
+        target_regions=["Hong Kong", "Singapore"],
+        academic_metrics={"gpa": 3.8},
+        language_scores={"ielts": 7.5},
+        experiences=["research project", "internship"],
+        target_schools=["NUS", "HKU"],
+        target_programs=["MSCS"],
+        risk_preference="balanced",
+    )
+
+
 def test_orchestrator_happy_path() -> None:
     orchestrator = _build_orchestrator()
     response = orchestrator.invoke(
         OrchestrationRequest(
             user_query="我需要选校、时间线和文书支持",
-            profile=UserProfile(major_interest="Computer Science"),
+            profile=_complete_profile(),
             constraints={"cycle": "2026", "timezone": "Asia/Shanghai"},
         )
     )
@@ -77,7 +91,7 @@ def test_orchestrator_expands_strategy_for_timeline_only_query() -> None:
     response = orchestrator.invoke(
         OrchestrationRequest(
             user_query="请给我做申请时间线",
-            profile=UserProfile(major_interest="Computer Science"),
+            profile=_complete_profile(),
             constraints={"cycle": "2026", "timezone": "Asia/Shanghai"},
         )
     )
@@ -93,7 +107,7 @@ def test_orchestrator_expands_full_chain_for_documents_only_query() -> None:
     response = orchestrator.invoke(
         OrchestrationRequest(
             user_query="请帮我准备文书",
-            profile=UserProfile(major_interest="Computer Science"),
+            profile=_complete_profile(),
             constraints={"cycle": "2026", "timezone": "Asia/Shanghai"},
         )
     )
@@ -158,6 +172,50 @@ def test_orchestrator_allows_degrade_task_execution() -> None:
     assert response.context is not None
     degraded = response.context.decisions.get("degraded_tasks", {})
     assert "draft_documents" in degraded
+
+
+def test_orchestrator_requests_profile_completion_before_sae() -> None:
+    orchestrator = _build_orchestrator()
+    response = orchestrator.invoke(
+        OrchestrationRequest(
+            user_query="请帮我做选校定位",
+            profile=UserProfile(),
+            constraints={"cycle": "2026", "timezone": "Asia/Shanghai"},
+        )
+    )
+
+    assert [result.agent for result in response.results] == ["aie", "sae"]
+    sae_result = response.results[1]
+    assert sae_result.status == TaskStatus.SKIPPED
+    assert any(item.startswith("missing_profile:") for item in sae_result.blocked_by)
+    assert "请补充以下字段后重试" in response.summary
+    assert "GPA" in response.summary
+    assert "语言成绩" in response.summary
+
+
+def test_orchestrator_skips_cds_instead_of_degrade_when_profile_incomplete() -> None:
+    orchestrator = _build_orchestrator()
+    response = orchestrator.invoke(
+        OrchestrationRequest(
+            user_query="我需要选校、时间线和文书支持",
+            profile=UserProfile(),
+            constraints={"cycle": "2026", "timezone": "Asia/Shanghai"},
+        )
+    )
+
+    agents = [result.agent for result in response.results]
+    assert agents == ["aie", "sae", "dta", "cds"]
+    statuses = [result.status for result in response.results]
+    assert statuses == [
+        TaskStatus.SUCCESS,
+        TaskStatus.SKIPPED,
+        TaskStatus.SKIPPED,
+        TaskStatus.SKIPPED,
+    ]
+    assert response.context is not None
+    degraded = response.context.decisions.get("degraded_tasks", {})
+    assert "draft_documents" not in degraded
+    assert "已暂停SAE择校及下游任务" in response.summary
 
 
 def test_orchestrator_returns_readable_intelligence_summary_for_official_query() -> None:

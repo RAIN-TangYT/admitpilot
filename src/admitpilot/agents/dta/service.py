@@ -11,6 +11,7 @@ from admitpilot.agents.dta.prompts import SYSTEM_PROMPT
 from admitpilot.agents.dta.replan import apply_replan
 from admitpilot.agents.dta.scheduler import schedule_milestones
 from admitpilot.agents.dta.schemas import Milestone, RiskMarker, TimelinePlan, WeekTask
+from admitpilot.config import AdmitPilotSettings
 from admitpilot.core.schemas import AIEAgentOutput, SAEAgentOutput
 from admitpilot.platform.llm.openai import OpenAIClient
 
@@ -21,7 +22,7 @@ class DynamicTimelineService:
     DEFAULT_WEEKS = 8
 
     def __init__(self, llm_client: OpenAIClient | None = None) -> None:
-        self.llm_client = llm_client or OpenAIClient()
+        self.llm_client = llm_client or OpenAIClient(settings=AdmitPilotSettings(run_mode="test"))
 
     def build_plan(
         self,

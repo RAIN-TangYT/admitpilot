@@ -29,6 +29,7 @@ from admitpilot.core.schemas import (
     DTAAgentOutput,
     SAEAgentOutput,
     SharedMemory,
+    UserProfile,
 )
 from admitpilot.pao.contracts import OrchestrationRequest, OrchestrationResponse
 from admitpilot.pao.router import IntentRouter
@@ -134,7 +135,12 @@ class PrincipalApplicationOrchestrator:
                     llm_client=llm_client,
                 )
             ),
-            "sae": SAEAgent(service=StrategicAdmissionsService(llm_client=llm_client)),
+            "sae": SAEAgent(
+                service=StrategicAdmissionsService(
+                    llm_client=llm_client,
+                    settings=settings,
+                )
+            ),
             "dta": DTAAgent(service=DynamicTimelineService(llm_client=llm_client)),
             "cds": CDSAgent(service=CoreDocumentService(llm_client=llm_client)),
         }
@@ -235,10 +241,15 @@ class PrincipalApplicationOrchestrator:
             context=context,
             prior_results=state["results"],
         )
-        if blockers and task.can_degrade:
+        profile_incomplete_block = self._should_skip_degrade_for_profile(
+            task=task,
+            blockers=blockers,
+            prior_results=state["results"],
+        )
+        if blockers and task.can_degrade and not profile_incomplete_block:
             degraded = context.decisions.setdefault("degraded_tasks", {})
             degraded[task.name] = blockers
-        if blockers and not task.can_degrade:
+        if blockers and (not task.can_degrade or profile_incomplete_block):
             result = self._build_skipped_result(
                 task=task,
                 agent_name=task.agent,
@@ -445,7 +456,57 @@ class PrincipalApplicationOrchestrator:
         for memory_key in task.required_memory:
             if memory_key not in context.shared_memory:
                 blockers.append(f"missing_memory:{memory_key}")
+        if task.name == "evaluate_strategy":
+            blockers.extend(self._missing_profile_blockers(context.profile))
         return blockers
+
+    def _missing_profile_blockers(self, profile: UserProfile) -> list[str]:
+        blockers: list[str] = []
+        if not profile.degree_level.strip():
+            blockers.append("missing_profile:degree_level")
+        if not profile.major_interest.strip():
+            blockers.append("missing_profile:major_interest")
+        if not profile.target_schools:
+            blockers.append("missing_profile:target_schools")
+        if not profile.target_programs:
+            blockers.append("missing_profile:target_programs")
+        if not profile.experiences:
+            blockers.append("missing_profile:experiences")
+        if not self._is_positive_number(profile.academic_metrics.get("gpa")):
+            blockers.append("missing_profile:academic_metrics.gpa")
+        if not self._has_valid_language_score(profile.language_scores):
+            blockers.append("missing_profile:language_scores")
+        return blockers
+
+    def _is_positive_number(self, value: Any) -> bool:
+        try:
+            return float(value) > 0
+        except (TypeError, ValueError):
+            return False
+
+    def _has_valid_language_score(self, language_scores: dict[str, Any]) -> bool:
+        for key in ("ielts", "toefl", "toefl_ibt"):
+            if self._is_positive_number(language_scores.get(key)):
+                return True
+        return False
+
+    def _should_skip_degrade_for_profile(
+        self,
+        task: AgentTask,
+        blockers: list[str],
+        prior_results: list[AgentResult],
+    ) -> bool:
+        if not task.can_degrade:
+            return False
+        if any(item.startswith("missing_profile:") for item in blockers):
+            return True
+        if "failed_task:evaluate_strategy" not in blockers:
+            return False
+        results_by_task = {item.task: item for item in prior_results}
+        sae_result = results_by_task.get("evaluate_strategy")
+        if sae_result is None:
+            return False
+        return any(item.startswith("missing_profile:") for item in sae_result.blocked_by)
 
     def _build_failed_result(
         self,
@@ -559,6 +620,9 @@ class PrincipalApplicationOrchestrator:
         failed_count: int,
         skipped_count: int,
     ) -> str:
+        profile_summary = self._build_profile_completion_summary(state["results"])
+        if profile_summary:
+            return profile_summary
         intelligent_summary = self._build_intelligence_only_summary(state["results"])
         if intelligent_summary:
             return intelligent_summary
@@ -575,6 +639,52 @@ class PrincipalApplicationOrchestrator:
                 f"status={item.status.value} confidence={item.confidence:.2f}"
             )
         return " ".join(parts)
+
+    def _build_profile_completion_summary(self, results: list[AgentResult]) -> str:
+        missing_fields = self._collect_missing_profile_fields(results)
+        if not missing_fields:
+            return ""
+        labels = [self._profile_field_label(item) for item in missing_fields]
+        return (
+            "用户画像信息不完整，已暂停SAE择校及下游任务。"
+            f"请补充以下字段后重试：{', '.join(labels)}。"
+        )
+
+    def _collect_missing_profile_fields(self, results: list[AgentResult]) -> list[str]:
+        ordered_keys = [
+            "degree_level",
+            "major_interest",
+            "target_schools",
+            "target_programs",
+            "academic_metrics.gpa",
+            "language_scores",
+            "experiences",
+        ]
+        seen: set[str] = set()
+        missing: list[str] = []
+        for result in results:
+            for blocker in result.blocked_by:
+                if not blocker.startswith("missing_profile:"):
+                    continue
+                key = blocker.split(":", 1)[1]
+                if key in seen:
+                    continue
+                seen.add(key)
+                missing.append(key)
+        order_map = {key: idx for idx, key in enumerate(ordered_keys)}
+        return sorted(missing, key=lambda item: order_map.get(item, len(order_map)))
+
+    def _profile_field_label(self, key: str) -> str:
+        labels = {
+            "degree_level": "学历层次",
+            "major_interest": "专业方向",
+            "target_schools": "目标院校",
+            "target_programs": "目标项目",
+            "academic_metrics.gpa": "GPA",
+            "language_scores": "语言成绩（IELTS/TOEFL）",
+            "experiences": "经历素材",
+        }
+        return labels.get(key, key)
 
     def _build_intelligence_only_summary(self, results: list[AgentResult]) -> str:
         if len(results) != 1:
