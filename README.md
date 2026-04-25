@@ -1,4 +1,6 @@
-<h1 align="center">AdmitPilot</h1>
+<p align="center">
+  <img alt="AdmitPilot logo" src="docs/assets/readme/logo.png" width="360" />
+</p>
 
 <div align="center">
   <p>
@@ -63,34 +65,9 @@ CUHK / HKUST` 五校、共 `38` 个泛计算机相关硕士项目，覆盖招生
 
 ### 系统架构
 
-```mermaid
-flowchart TD
-    U[User Request]
-    P[PAO Orchestrator]
+![AdmitPilot Architecture Overview](docs/assets/readme/architecture-overview.png)
 
-    U --> P
-
-    P --> A[AIE<br/>Admissions Intelligence Engine]
-    P --> S[SAE<br/>Strategy Analysis Engine]
-    P --> D[DTA<br/>Deadline and Timeline Agent]
-    P --> C[CDS<br/>Content and Document Support]
-
-    A --> A1[Official Library]
-    A --> A2[Case Library]
-    A --> A3[Live Refresh and Snapshots]
-
-    S --> S1[Rule Scoring]
-    S --> S2[Semantic Matching]
-    S --> S3[Evidence-Based Recommendation]
-
-    D --> D1[Dependency Graph]
-    D --> D2[Reverse Scheduling]
-    D --> D3[Replanning]
-
-    C --> C1[Fact Slots]
-    C --> C2[Writing Support]
-    C --> C3[Consistency Checks]
-```
+![AdmitPilot Workflow](docs/assets/readme/workflow.png)
 
 当前默认支持范围：
 
@@ -127,13 +104,9 @@ Web 演示登录信息：
 
 当前 README 配套素材已落地到 `docs/assets/readme/`，可直接用于仓库首页展示、课程汇报与项目说明。
 
-核心示意图：
+项目横幅：
 
 ![AdmitPilot Hero Banner](docs/assets/readme/hero-banner.png)
-
-![AdmitPilot Architecture Overview](docs/assets/readme/architecture-overview.png)
-
-![AdmitPilot Workflow](docs/assets/readme/workflow.png)
 
 Web 界面截图：
 
@@ -292,4 +265,3 @@ python -m pytest -q
 
 - Working Directory 指向项目根目录
 - 将 `src` 标记为 Sources Root，或设置 `PYTHONPATH=src`
-- 可直接运行模块 `admitpilot.main` 或 `admitpilot.api.main`

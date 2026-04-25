@@ -1,4 +1,6 @@
-<h1 align="center">AdmitPilot</h1>
+<p align="center">
+  <img alt="AdmitPilot logo" src="docs/assets/readme/logo.png" width="360" />
+</p>
 
 <div align="center">
   <p>
@@ -66,34 +68,9 @@ for the current baseline.
 
 ### Architecture
 
-```mermaid
-flowchart TD
-    U[User Request]
-    P[PAO Orchestrator]
+![AdmitPilot Architecture Overview](docs/assets/readme/architecture-overview.png)
 
-    U --> P
-
-    P --> A[AIE<br/>Admissions Intelligence Engine]
-    P --> S[SAE<br/>Strategy Analysis Engine]
-    P --> D[DTA<br/>Deadline and Timeline Agent]
-    P --> C[CDS<br/>Content and Document Support]
-
-    A --> A1[Official Library]
-    A --> A2[Case Library]
-    A --> A3[Live Refresh and Snapshots]
-
-    S --> S1[Rule Scoring]
-    S --> S2[Semantic Matching]
-    S --> S3[Evidence-Based Recommendation]
-
-    D --> D1[Dependency Graph]
-    D --> D2[Reverse Scheduling]
-    D --> D3[Replanning]
-
-    C --> C1[Fact Slots]
-    C --> C2[Writing Support]
-    C --> C3[Consistency Checks]
-```
+![AdmitPilot Workflow](docs/assets/readme/workflow.png)
 
 Default support scope:
 
@@ -132,13 +109,9 @@ README visual assets are now available under `docs/assets/readme/` and can be
 used directly for the repository landing page, course presentation, and project
 documentation.
 
-Core diagrams:
+Project Banner:
 
 ![AdmitPilot Hero Banner](docs/assets/readme/hero-banner.png)
-
-![AdmitPilot Architecture Overview](docs/assets/readme/architecture-overview.png)
-
-![AdmitPilot Workflow](docs/assets/readme/workflow.png)
 
 Web screenshots:
 
@@ -298,4 +271,3 @@ Notes:
 
 - Set the Working Directory to the project root
 - Mark `src` as a Sources Root, or set `PYTHONPATH=src`
-- Run `admitpilot.main` or `admitpilot.api.main` directly as modules
