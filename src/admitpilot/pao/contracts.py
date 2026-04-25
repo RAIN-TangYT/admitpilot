@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from admitpilot.core.schemas import AgentResult, ApplicationContext, UserProfile
 
@@ -23,4 +23,12 @@ class OrchestrationResponse:
 
     summary: str
     results: list[AgentResult] = field(default_factory=list)
-    context: Optional[ApplicationContext] = None
+    context: ApplicationContext | None = None
+
+
+@dataclass
+class OrchestrationEvent:
+    """Incremental orchestration event emitted while PAO executes."""
+
+    event: str
+    data: dict[str, Any] = field(default_factory=dict)

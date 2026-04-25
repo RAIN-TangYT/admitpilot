@@ -1,6 +1,6 @@
 # AdmitPilot Current Implementation Snapshot
 
-- 文档日期：`2026-04-24`
+- 文档日期：`2026-04-25`
 - 适用范围：当前仓库代码基线
 - 文档目的：给 GitHub 读者一个与代码一致的实现快照
 
@@ -86,8 +86,7 @@ python -m admitpilot.main
 API：
 
 ```bash
-$env:PYTHONPATH='src'
-python -m uvicorn admitpilot.api.main:app --reload
+python run_backend.py
 ```
 
 ## 5. 当前默认配置
@@ -266,17 +265,18 @@ python -m admitpilot.debug.refresh_official_library --cycle 2026
 
 ## 8. 当前质量状态
 
-当前已验证通过：
+当前已验证通过（`2026-04-25`）：
 
 ```bash
 $env:PYTHONPATH='src'
 python -m pytest -q
+$env:PYTHONPATH='src'
+python -m ruff check src tests
+python -m mypy src tests
 ```
 
 说明：
-- 仍可能出现 `.pytest_cache` 权限 warning，这属于本地目录权限问题，不影响当前代码正确性
-- `2026-04-24` 全量 `pytest` 可通过
-- `ruff` / `mypy` 当前仍有静态检查债，包括行长、导入排序、第三方 stub、测试字典类型和少量 typing 问题；这些不影响当前演示链路回归，但不应记录为已通过
+- `2026-04-25` 全量 `pytest`、`ruff`、`mypy` 均已通过
 
 ## 9. 当前已知限制
 

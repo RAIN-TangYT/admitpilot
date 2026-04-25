@@ -3,7 +3,7 @@ import pytest
 pytest.importorskip("fastapi")
 pytest.importorskip("httpx")
 
-from fastapi.testclient import TestClient  # type: ignore[import-not-found]
+from fastapi.testclient import TestClient
 
 from admitpilot.api.main import create_api_app
 from admitpilot.app import build_application

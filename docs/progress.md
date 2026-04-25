@@ -1,6 +1,6 @@
 # AdmitPilot 实施进度记录
 
-- 文档日期：`2026-04-24`
+- 文档日期：`2026-04-25`
 - 对应计划：`docs/implementation_plan.md`
 - 用途：记录每一步的实际修复动作、测试结果、阻塞项与下一步安排
 
@@ -753,6 +753,76 @@
   - 无
 - 下一步：
   - `Phase 6-7` 当前继续暂缓。
+
+### 补充记录. `2026-04-25` 文档整理与基线校验
+
+- 状态：`done`
+- 开始时间：`2026-04-25 10:20:00`
+- 完成时间：`2026-04-25 11:10:00`
+- 负责人：`TYT`
+- 改动文件：
+  - `README.md`
+  - `docs/agent_engineering_architecture.md`
+  - `docs/implementation_plan.md`
+  - `docs/progress.md`
+  - `docs/project_full_documentation.md`
+- 实际修复动作：
+  - 统一 README 与 docs 的运行口径，区分 CLI 与 Web 默认 demo 组合，避免默认项目映射混淆。
+  - 更新文档日期到 `2026-04-25`，并同步 API 启动方式（`run_backend.py` 与 uvicorn 两种入口）。
+  - 补齐当前质量基线结论：`pytest` 可通过，`ruff/mypy` 仍存在静态检查债，不作为通过项记录。
+- 测试：
+  - 命令：`$env:PYTHONPATH='src'; & 'D:\ProgramFiles\anaconda3\envs\admitpilot\python.exe' -m pytest -q`
+  - 结果：`passed`
+  - 命令：`$env:PYTHONPATH='src'; & 'D:\ProgramFiles\anaconda3\envs\admitpilot\python.exe' -m ruff check src tests`
+  - 结果：`failed（38 issues）`
+  - 命令：`$env:PYTHONPATH='src'; & 'D:\ProgramFiles\anaconda3\envs\admitpilot\python.exe' -m mypy src tests`
+  - 结果：`failed（25 issues）`
+- 偏差说明：
+  - 本次聚焦文档整理与口径同步，不处理既有代码的静态检查缺陷。
+- 阻塞项：
+  - 无
+- 下一步：
+  - 如需提升工程质量基线，单独开一轮 `ruff + mypy` 债务清理。
+
+### 补充记录. `2026-04-25` 静态检查修复与回归验证
+
+- 状态：`done`
+- 开始时间：`2026-04-25 11:10:00`
+- 完成时间：`2026-04-25 12:20:00`
+- 负责人：`TYT`
+- 改动文件：
+  - `src/admitpilot/agents/dta/deadlines.py`
+  - `src/admitpilot/agents/sae/schemas.py`
+  - `src/admitpilot/agents/sae/scoring.py`
+  - `src/admitpilot/agents/sae/rules.py`
+  - `src/admitpilot/core/user_artifacts.py`
+  - `src/admitpilot/debug/refresh_case_library.py`
+  - `src/admitpilot/debug/refresh_official_library.py`
+  - `src/admitpilot/api/main.py`
+  - `src/admitpilot/api/routes/health.py`
+  - `src/admitpilot/api/routes/v1.py`
+  - `tests/test_user_artifacts.py`
+  - `tests/test_cds_fact_slots.py`
+  - `tests/test_cds_service.py`
+  - `tests/test_cds_templates.py`
+  - `tests/test_app_factory.py`
+  - `tests/test_api_v1.py`
+  - `tests/test_api_health.py`
+  - `tests/test_settings.py`
+- 实际修复动作：
+  - 完成 `ruff` 剩余问题修复，重点处理长行与格式规范问题（含 `refresh_case_library.py` 批量长字符串拆分）。
+  - 修复 `sae` 类型问题（补充 `Any` 导入、优化评分逻辑长表达式换行）。
+  - 修复 `mypy` 报错：清理无效 `type: ignore`、修正测试中的类型标注（`SAEAgentOutput`/`DTAAgentOutput`）、移除冗余 `cast`、处理 `refresh_official_library.py` 的索引类型告警（引入 `predicted_count` 中间变量）。
+  - 同步调整测试辅助构造数据类型，确保与服务接口签名一致。
+- 回归验证：
+  - 命令：`$env:PYTHONPATH='src'; & 'D:\ProgramFiles\anaconda3\envs\admitpilot\python.exe' -m ruff check src tests`
+  - 结果：`passed（All checks passed）`
+  - 命令：`$env:PYTHONPATH='src'; & 'D:\ProgramFiles\anaconda3\envs\admitpilot\python.exe' -m mypy src tests`
+  - 结果：`passed（Success: no issues found in 122 source files）`
+  - 命令：`$env:PYTHONPATH='src'; & 'D:\ProgramFiles\anaconda3\envs\admitpilot\python.exe' -m pytest -q`
+  - 结果：`passed（100%）`
+- 结论：
+  - 当前质量基线已收敛为：`pytest`、`ruff`、`mypy` 三项全通过，可作为后续功能迭代的稳定起点。
 
 ---
 

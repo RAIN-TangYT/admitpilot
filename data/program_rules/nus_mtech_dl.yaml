@@ -1,0 +1,19 @@
+school: NUS
+program: MTECH_DL
+hard_thresholds:
+  gpa_min: 3.0
+  experience_years_min: 5
+soft_thresholds:
+  gpa_target: 3.3
+  ielts_target: 6.5
+recommended_backgrounds:
+  - digital transformation
+  - technology leadership
+  - business strategy
+risk_flags:
+  - senior_profile_expected
+  - interview_required
+  - language_requirement_unpublished
+missing_input_penalties:
+  ielts: 0.06
+  experience: 0.03

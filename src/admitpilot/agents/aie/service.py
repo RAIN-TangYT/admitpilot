@@ -31,13 +31,14 @@ from admitpilot.agents.aie.schemas import (
 )
 from admitpilot.agents.aie.snapshots import diff_official_record, record_identity
 from admitpilot.config import AdmitPilotSettings
+from admitpilot.core.english import english_items, english_or
 from admitpilot.domain.catalog import DEFAULT_ADMISSIONS_CATALOG, AdmissionsCatalog
 from admitpilot.platform.common.time import utc_now, utc_today
 from admitpilot.platform.llm.openai import OpenAIClient
 
 
 class AdmissionsIntelligenceService:
-    """负责招生知识检索、更新识别与置信度推断。"""
+    """Retrieve admissions intelligence, update signals, and confidence estimates."""
 
     OFFICIAL_SCHOOLS = DEFAULT_ADMISSIONS_CATALOG.all_school_codes()
 
@@ -69,7 +70,7 @@ class AdmissionsIntelligenceService:
         as_of_date: date | None = None,
         include_case_updates: bool = True,
     ) -> AdmissionsIntelligencePack:
-        """返回标准化招生情报包。"""
+        """Return a normalized admissions intelligence pack."""
 
         target_schools = self._normalize_target_schools(schools)
         target_date = as_of_date or utc_today()
@@ -91,7 +92,10 @@ class AdmissionsIntelligenceService:
                 forecast_signals.append(
                     ForecastSignal(
                         school=school,
-                        insight=f"{school} {cycle} 尚未发布完整官方信息，先按历史稳定项预测。",
+                        insight=(
+                            f"{school} has not released complete {cycle} official information; "
+                            "use stable historical requirements as a forecast baseline."
+                        ),
                         confidence=snapshot.confidence,
                         basis="official_long_memory",
                         reason="current_cycle_not_released",
@@ -199,13 +203,15 @@ class AdmissionsIntelligenceService:
         ]
         prompt = "\n".join(
             [
-                "请基于以下招生情报生成 JSON。",
                 (
-                    '返回格式：{"case_patterns":["..."],'
+                    "Generate JSON in English only from the admissions intelligence below."
+                ),
+                (
+                    'Return format: {"case_patterns":["..."],'
                     '"forecast_signals":[{"school":"NUS","insight":"...","basis":"...","reason":"..."}]}'
                 ),
-                "不要输出 markdown。",
-                f"query={query}",
+                "Do not output markdown. All values must be English.",
+                f"query={english_or(query, 'Official admissions query')}",
                 f"cycle={cycle}",
                 f"program={program}",
                 f"official_status={official_status_seed}",
@@ -222,10 +228,9 @@ class AdmissionsIntelligenceService:
         except RuntimeError:
             return forecast_signals
         llm_patterns = payload.get("case_patterns", [])
-        if isinstance(llm_patterns, list):
-            normalized_patterns = [str(item).strip() for item in llm_patterns if str(item).strip()]
-            if normalized_patterns:
-                case_patterns[:] = normalized_patterns[:4]
+        normalized_patterns = english_items(llm_patterns)
+        if normalized_patterns:
+            case_patterns[:] = normalized_patterns[:4]
         llm_signals = payload.get("forecast_signals", [])
         if not isinstance(llm_signals, list):
             return forecast_signals
@@ -237,9 +242,9 @@ class AdmissionsIntelligenceService:
             if school is None or school not in signal_by_school:
                 continue
             signal = signal_by_school[school]
-            insight = str(item.get("insight", "")).strip()
-            basis = str(item.get("basis", "")).strip()
-            reason = str(item.get("reason", "")).strip()
+            insight = english_or(item.get("insight"))
+            basis = english_or(item.get("basis"))
+            reason = english_or(item.get("reason"))
             if insight:
                 signal.insight = insight
             if basis:
@@ -345,8 +350,11 @@ class AdmissionsIntelligenceService:
         patterns = []
         if records:
             patterns = [
-                f"{cycle} 前置准备更看重课程契合与证据链完整性",
-                "高置信案例显示科研与实习叙事闭环可显著降低拒录风险",
+                f"{cycle} preparation favors course fit and complete evidence chains.",
+                (
+                    "High-confidence cases show that a closed research and internship "
+                    "narrative lowers rejection risk."
+                ),
             ]
         snapshot = CaseSnapshot(
             snapshot_date=as_of_date,
@@ -445,7 +453,7 @@ class AdmissionsIntelligenceService:
                     cycle=str(cycle_year),
                     page_type="policy",
                     source_url=source_url,
-                    content=f"{school} {cycle_year} 历史招生政策归档。",
+                    content=f"{school} {cycle_year} historical admissions policy archive.",
                     published_date=published_date,
                     effective_date=published_date,
                     fetched_at=utc_now() - timedelta(days=offset * 180),
@@ -458,13 +466,13 @@ class AdmissionsIntelligenceService:
                     is_policy_change=offset % 2 == 0,
                     change_type="updated",
                     changed_fields=["policy_cycle"] if offset % 2 == 0 else [],
-                    delta_summary=f"{school} {cycle_year} 年政策归档",
+                    delta_summary=f"{school} {cycle_year} policy archive",
                 )
                 records.append(record)
         return records
 
     def _historical_confidence(self, offset: int) -> float:
-        """历史数据越久远，置信轻微衰减。"""
+        """Older historical data receives slight confidence decay."""
 
         return max(0.72, 0.9 * math.exp(-0.03 * offset))
 

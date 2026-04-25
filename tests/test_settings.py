@@ -104,7 +104,10 @@ def test_test_mode_uses_isolated_runtime_official_library_path() -> None:
     settings = AdmitPilotSettings(run_mode="test")
 
     assert settings.official_library_path == "data/official_library/official_library.json"
-    assert settings.runtime_official_library_path == ".pytest-local/runtime_official_library.test.json"
+    assert (
+        settings.runtime_official_library_path
+        == ".pytest-local/runtime_official_library.test.json"
+    )
 
 
 def test_explicit_official_library_path_is_preserved_in_test_mode() -> None:

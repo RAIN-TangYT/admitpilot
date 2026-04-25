@@ -1,0 +1,19 @@
+school: HKU
+program: MSFTDA
+hard_thresholds:
+  gpa_min: 3.0
+  toefl_ibt_min: 80
+soft_thresholds:
+  gpa_target: 3.5
+  ielts_target: 6.5
+recommended_backgrounds:
+  - financial technology
+  - data analytics
+  - quantitative analysis
+risk_flags:
+  - competition_high
+  - quant_background_preferred
+  - language_requirement_unpublished
+missing_input_penalties:
+  ielts: 0.06
+  experience: 0.03

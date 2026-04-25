@@ -5,6 +5,7 @@ __pycache__/
 .Python
 .pytest_cache/
 .pytest-local/
+.admitpilot/
 .mypy_cache/
 .ruff_cache/
 .pyre/
@@ -36,6 +37,23 @@ pip-wheel-metadata/
 # Logs
 *.log
 tmp/
+tmp_testdata/
+.pytest_tmp*/
+.tmp_pytest*/
+temp_*.py
+tmp_*.py
+tmp_*.txt
+.tmp_*.py
+
+# Frontend local build/cache artifacts (root safety net)
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.turbo/
+
+# Local runtime database artifacts
+*.sqlite3
+*.sqlite3-journal
 
 .idea/
 !.idea/.gitignore

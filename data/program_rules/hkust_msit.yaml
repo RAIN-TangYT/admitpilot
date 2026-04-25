@@ -1,18 +1,18 @@
 school: HKUST
 program: MSIT
 hard_thresholds:
-  gpa_min: 3.2
-  ielts_min: 6.0
+  gpa_min: 3.0
 soft_thresholds:
-  gpa_target: 3.6
+  gpa_target: 3.4
   ielts_target: 6.5
 recommended_backgrounds:
   - information technology
-  - computer engineering
-  - cybersecurity
+  - software development
+  - systems integration
 risk_flags:
-  - rolling_admission
-  - round_deadline_pressure
+  - competition_high
+  - background_match_required
+  - language_requirement_unpublished
 missing_input_penalties:
-  ielts: 0.05
+  ielts: 0.06
   experience: 0.03

@@ -1,18 +1,20 @@
 school: NUS
 program: MCOMP_CS
 hard_thresholds:
-  gpa_min: 3.4
+  gpa_min: 3.2
   ielts_min: 6.0
+  toefl_ibt_min: 90
 soft_thresholds:
-  gpa_target: 3.7
-  ielts_target: 7.0
+  gpa_target: 3.6
+  ielts_target: 6.5
 recommended_backgrounds:
   - computer science
-  - systems
-  - software engineering
+  - algorithms
+  - software systems
 risk_flags:
-  - heavy_competition
-  - rolling_review
+  - competition_high
+  - it_experience_preferred
+  - early_application_preferred
 missing_input_penalties:
   ielts: 0.06
   experience: 0.03

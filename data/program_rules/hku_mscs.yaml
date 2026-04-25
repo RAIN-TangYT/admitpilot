@@ -1,18 +1,19 @@
 school: HKU
 program: MSCS
 hard_thresholds:
-  gpa_min: 3.2
-  ielts_min: 6.0
+  gpa_min: 3.0
+  toefl_ibt_min: 80
 soft_thresholds:
-  gpa_target: 3.5
+  gpa_target: 3.4
   ielts_target: 6.5
 recommended_backgrounds:
-  - algorithms
   - computer science
   - software engineering
+  - systems
 risk_flags:
-  - interview_screening
-  - deadline_sensitive
+  - competition_high
+  - language_requirement_unpublished
+  - early_application_preferred
 missing_input_penalties:
-  ielts: 0.05
+  ielts: 0.06
   experience: 0.03

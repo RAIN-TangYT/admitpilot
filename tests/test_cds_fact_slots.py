@@ -1,8 +1,9 @@
 from admitpilot.agents.cds.facts import build_fact_slots
+from admitpilot.core.schemas import DTAAgentOutput, SAEAgentOutput
 from admitpilot.core.user_artifacts import parse_user_artifacts
 
 
-def _strategy() -> dict:
+def _strategy() -> SAEAgentOutput:
     return {
         "summary": "ok",
         "model_breakdown": {},
@@ -14,7 +15,7 @@ def _strategy() -> dict:
     }
 
 
-def _timeline() -> dict:
+def _timeline() -> DTAAgentOutput:
     return {
         "board_title": "board",
         "milestones": [{"key": "doc_pack_v1"}],
@@ -45,10 +46,17 @@ def test_fact_slots_have_status_and_source_ref() -> None:
 
 
 def test_fact_slots_mark_missing_when_core_evidence_absent() -> None:
+    empty_timeline: DTAAgentOutput = {
+        "board_title": "x",
+        "milestones": [],
+        "weekly_plan": [],
+        "risk_markers": [],
+        "document_instructions": [],
+    }
     slots = build_fact_slots(
         artifacts=parse_user_artifacts([]),
         strategy=_strategy(),
-        timeline={"board_title": "x", "milestones": [], "weekly_plan": [], "risk_markers": [], "document_instructions": []},
+        timeline=empty_timeline,
     )
     motivation = next(item for item in slots if item.slot_id == "motivation_core")
     assert motivation.status == "missing"

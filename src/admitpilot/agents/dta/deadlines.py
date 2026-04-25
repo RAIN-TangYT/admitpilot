@@ -33,7 +33,13 @@ def extract_official_deadlines(official_records: list[dict[str, Any]]) -> list[O
             except ValueError:
                 continue
             if school:
-                collected.append(OfficialDeadline(school=school, deadline_date=parsed, source=source))
+                collected.append(
+                    OfficialDeadline(
+                        school=school,
+                        deadline_date=parsed,
+                        source=source,
+                    )
+                )
     earliest_by_school: dict[str, OfficialDeadline] = {}
     for item in collected:
         previous = earliest_by_school.get(item.school)

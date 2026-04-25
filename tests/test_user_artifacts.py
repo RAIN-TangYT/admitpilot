@@ -28,8 +28,9 @@ def test_parse_user_artifacts_success() -> None:
 
 
 def test_parse_user_artifacts_rejects_missing_required_fields() -> None:
+    invalid_payload: list[dict[str, str | bool]] = [{"artifact_id": "x", "title": "bad"}]
     try:
-        parse_user_artifacts([{"artifact_id": "x", "title": "bad"}])  # type: ignore[list-item]
+        parse_user_artifacts(invalid_payload)
     except ValueError:
         return
     raise AssertionError("expected ValueError for missing required fields")

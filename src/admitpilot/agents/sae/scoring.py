@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from admitpilot.agents.sae.rules import ProgramRule
 from admitpilot.core.schemas import AIEAgentOutput, UserProfile
@@ -26,7 +25,7 @@ class RuleScorer:
         intelligence: AIEAgentOutput,
         school: str,
         program: str,
-        rule: Optional[ProgramRule],
+        rule: ProgramRule | None,
     ) -> RuleScoreResult:
         gpa = float(user_profile.academic_metrics.get("gpa", 3.5))
         ielts = float(user_profile.language_scores.get("ielts", 7.0))
@@ -62,7 +61,9 @@ class RuleScorer:
                 base -= penalty
                 notes.append("missing_ielts")
 
-            profile_text = f"{user_profile.major_interest} {' '.join(user_profile.experiences)}".lower()
+            profile_text = (
+                f"{user_profile.major_interest} {' '.join(user_profile.experiences)}"
+            ).lower()
             has_background_match = any(
                 token.lower() in profile_text for token in rule.recommended_backgrounds
             )

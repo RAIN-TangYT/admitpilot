@@ -32,7 +32,8 @@ def test_build_application_uses_supplied_demo_settings() -> None:
     assert isinstance(aie_agent.service.official_repository, JsonOfficialSnapshotRepository)
     assert isinstance(aie_agent.service.case_gateway, JsonCaseLibrarySourceGateway)
     library_gateway = aie_agent.service.official_gateway
-    repository = cast(JsonOfficialSnapshotRepository, library_gateway.repository)
+    assert isinstance(library_gateway.repository, JsonOfficialSnapshotRepository)
+    repository = library_gateway.repository
     assert str(repository.path).endswith("official_library.json")
     sae_agent = cast(SAEAgent, application.agents["sae"])
     assert isinstance(sae_agent.service.semantic_matcher, EmbeddingSemanticMatcher)
@@ -49,6 +50,6 @@ def test_build_application_keeps_test_mode_llm_disabled_without_api_key() -> Non
     assert application.platform_bundle.settings.run_mode == "test"
     assert aie_agent.service.llm_client.enabled is False
     assert isinstance(aie_agent.service.official_repository, JsonOfficialSnapshotRepository)
-    repository = cast(JsonOfficialSnapshotRepository, aie_agent.service.official_repository)
+    repository = aie_agent.service.official_repository
     assert str(repository.path).endswith("runtime_official_library.test.json")
     assert isinstance(sae_agent.service.semantic_matcher, FakeSemanticMatcher)

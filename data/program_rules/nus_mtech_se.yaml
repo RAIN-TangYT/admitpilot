@@ -1,0 +1,19 @@
+school: NUS
+program: MTECH_SE
+hard_thresholds:
+  gpa_min: 3.0
+  experience_years_min: 2
+soft_thresholds:
+  gpa_target: 3.4
+  ielts_target: 6.5
+recommended_backgrounds:
+  - software engineering
+  - system design
+  - industry projects
+risk_flags:
+  - work_experience_expected
+  - test_or_interview_possible
+  - language_requirement_unpublished
+missing_input_penalties:
+  ielts: 0.06
+  experience: 0.03

@@ -1,3 +1,4 @@
+import json
 from typing import Any, cast
 
 from admitpilot.config import AdmitPilotSettings
@@ -24,7 +25,7 @@ class MissingDependencyRouter:
             tasks=[
                 AgentTask(
                     name="evaluate_strategy",
-                    description="缺少 AIE 上游依赖",
+                    description="Missing AIE upstream dependency",
                     agent="sae",
                     depends_on=["collect_intelligence"],
                     required_memory=["aie"],
@@ -41,7 +42,7 @@ class DegradeOnlyDocumentsRouter:
             tasks=[
                 AgentTask(
                     name="draft_documents",
-                    description="仅文书降级任务",
+                    description="Document-only degraded task",
                     agent="cds",
                     depends_on=["evaluate_strategy", "build_timeline"],
                     required_memory=["sae", "dta"],
@@ -72,6 +73,11 @@ def _complete_profile() -> UserProfile:
     )
 
 
+def _contains_cjk(value: object) -> bool:
+    payload = json.dumps(value, ensure_ascii=False, default=str)
+    return any("\u3400" <= char <= "\u9fff" for char in payload)
+
+
 def test_orchestrator_happy_path() -> None:
     orchestrator = _build_orchestrator()
     response = orchestrator.invoke(
@@ -84,6 +90,23 @@ def test_orchestrator_happy_path() -> None:
     assert len(response.results) >= 3
     assert response.context is not None
     assert "aie" in response.context.shared_memory
+
+
+def test_orchestrator_agent_context_and_outputs_are_english_only() -> None:
+    orchestrator = _build_orchestrator()
+    response = orchestrator.invoke(
+        OrchestrationRequest(
+            user_query="我需要选校、时间线和文书支持",
+            profile=_complete_profile(),
+            constraints={"cycle": "2026", "timezone": "Asia/Shanghai"},
+        )
+    )
+
+    assert response.context is not None
+    assert all(result.status == TaskStatus.SUCCESS for result in response.results)
+    assert not _contains_cjk(response.context.user_query)
+    assert not _contains_cjk([result.output for result in response.results])
+    assert not _contains_cjk(response.context.shared_memory)
 
 
 def test_orchestrator_expands_strategy_for_timeline_only_query() -> None:
@@ -166,9 +189,9 @@ def test_orchestrator_allows_degrade_task_execution() -> None:
     assert result.status == TaskStatus.SUCCESS
     assert result.success is True
     assert result.output["document_drafts"] == []
-    assert "缺少上游" in result.output["consistency_issues"][0]["message"]
-    assert "申请动机与长期职业目标一致" not in str(result.output)
-    assert "关键里程碑数量=0" not in str(result.output)
+    assert "Missing upstream" in result.output["consistency_issues"][0]["message"]
+    assert "motivation matches long-term goals" not in str(result.output)
+    assert "milestone count=0" not in str(result.output)
     assert response.context is not None
     degraded = response.context.decisions.get("degraded_tasks", {})
     assert "draft_documents" in degraded
@@ -188,9 +211,9 @@ def test_orchestrator_requests_profile_completion_before_sae() -> None:
     sae_result = response.results[1]
     assert sae_result.status == TaskStatus.SKIPPED
     assert any(item.startswith("missing_profile:") for item in sae_result.blocked_by)
-    assert "请补充以下字段后重试" in response.summary
+    assert "Complete these fields and retry" in response.summary
     assert "GPA" in response.summary
-    assert "语言成绩" in response.summary
+    assert "language score" in response.summary
 
 
 def test_orchestrator_skips_cds_instead_of_degrade_when_profile_incomplete() -> None:
@@ -215,7 +238,7 @@ def test_orchestrator_skips_cds_instead_of_degrade_when_profile_incomplete() -> 
     assert response.context is not None
     degraded = response.context.decisions.get("degraded_tasks", {})
     assert "draft_documents" not in degraded
-    assert "已暂停SAE择校及下游任务" in response.summary
+    assert "SAE and downstream tasks are paused" in response.summary
 
 
 def test_orchestrator_returns_readable_intelligence_summary_for_official_query() -> None:
@@ -237,9 +260,9 @@ def test_orchestrator_returns_readable_intelligence_summary_for_official_query()
         isinstance(item.get("extracted_fields"), dict) and item["extracted_fields"]
         for item in aie_output["official_records"]
     )
-    assert "AIE 官网情报摘要" in response.summary
+    assert "AIE official intelligence summary" in response.summary
     assert "HKUST / MSIT" in response.summary
-    assert "截止时间" in response.summary
+    assert "Deadline" in response.summary
 
 
 def test_orchestrator_routes_chinese_deadline_query_to_aie_only() -> None:
@@ -258,8 +281,8 @@ def test_orchestrator_routes_chinese_deadline_query_to_aie_only() -> None:
     assert aie_output["target_schools"] == ["HKU"]
     assert aie_output["target_program_by_school"]["HKU"] == "MSCS"
     assert aie_output["official_status_by_school"]["HKU"] == "official_found"
-    assert "AIE 官网情报摘要" in response.summary
-    assert "截止时间" in response.summary
+    assert "AIE official intelligence summary" in response.summary
+    assert "Deadline" in response.summary
 
 
 def test_orchestrator_handles_chinese_school_name_official_query() -> None:
@@ -279,7 +302,7 @@ def test_orchestrator_handles_chinese_school_name_official_query() -> None:
     assert aie_output["target_program_by_school"]["HKU"] == "MDS"
     assert aie_output["official_status_by_school"]["HKU"] == "official_found"
     assert "HKU / MDS" in response.summary
-    assert "截止时间" in response.summary
+    assert "Deadline" in response.summary
 
 
 def test_orchestrator_maps_ais_alias_to_mtech_ais_for_nus_query() -> None:
@@ -319,7 +342,7 @@ def test_orchestrator_returns_configured_source_url_when_no_structured_records()
         aie_output["official_source_urls_by_school"]["NUS"]["requirements"]
         == "https://masters.nus.edu.sg/programmes/master-of-science-in-business-analytics"
     )
-    assert "官方来源" in response.summary
+    assert "Official source" in response.summary
     assert "master-of-science-in-business-analytics" in response.summary
 
 

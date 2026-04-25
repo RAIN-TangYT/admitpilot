@@ -10,6 +10,7 @@ from admitpilot.agents.aie.live_sources import build_live_source_url_map
 from admitpilot.agents.aie.schemas import CaseRecord, ForecastSignal
 from admitpilot.agents.aie.service import AdmissionsIntelligenceService
 from admitpilot.agents.base import BaseAgent
+from admitpilot.core.english import english_or
 from admitpilot.core.schemas import AgentResult, AgentTask, AIEAgentOutput, ApplicationContext
 from admitpilot.platform.common.time import utc_today
 
@@ -260,6 +261,17 @@ class AIEAgent(BaseAgent):
                 if self.service.catalog.is_supported_program(school_code, program_code):
                     portfolio[school_code] = program_code
                     unsupported_program_by_school.pop(school_code, None)
+        payload_unsupported = task.payload.get("unsupported_program_by_school")
+        if isinstance(payload_unsupported, dict):
+            for raw_school, raw_program in payload_unsupported.items():
+                school_code = self.service.catalog.normalize_school_code(str(raw_school))
+                if school_code is None or school_code not in target_schools:
+                    continue
+                unsupported_program_by_school[school_code] = english_or(
+                    raw_program,
+                    "unsupported_program",
+                )
+                portfolio.pop(school_code, None)
         supported_programs_by_school = {
             school: portfolio.get(school) or self.service.catalog.supported_programs(school)[0]
             for school in target_schools

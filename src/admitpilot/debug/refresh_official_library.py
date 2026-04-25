@@ -7,7 +7,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -101,7 +101,7 @@ def main() -> None:
     parser.add_argument("--cycle", default=str(date.today().year), help="Target admissions cycle")
     args = parser.parse_args()
     cycle = str(args.cycle)
-    now = datetime.now(timezone.utc).replace(microsecond=0)
+    now = datetime.now(UTC).replace(microsecond=0)
     records: list[dict[str, Any]] = []
     school_status: list[dict[str, str | bool]] = []
     validation_errors: list[dict[str, Any]] = []
@@ -133,6 +133,7 @@ def main() -> None:
         )
         records.append(record)
 
+    predicted_count = sum(1 for item in records if is_predicted_official_record(item))
     payload = {
         "cycle": cycle,
         "generated_at": now.isoformat().replace("+00:00", "Z"),
@@ -141,7 +142,7 @@ def main() -> None:
         "school_status": school_status,
         "validation": {
             "record_count": len(records),
-            "predicted_count": sum(1 for item in records if is_predicted_official_record(item)),
+            "predicted_count": predicted_count,
             "invalid_count": len(validation_errors),
             "errors": validation_errors,
         },
@@ -151,7 +152,7 @@ def main() -> None:
 
     print(f"wrote {OUTPUT_PATH}")
     print(f"official records: {len(records)}")
-    print(f"predicted records: {payload['validation']['predicted_count']}")
+    print(f"predicted records: {predicted_count}")
     print(f"invalid records: {len(validation_errors)}")
     if validation_errors:
         print("validation errors detected:")
@@ -235,7 +236,10 @@ def _fetch_official_content(target: OfficialTarget) -> dict[str, Any]:
         "fetched": False,
         "fallback_resolved": False,
         "source_url": target.primary_url,
-        "content": f"{target.school} {target.program} {target.page_type} page is anti-bot protected; keep predicted.",
+        "content": (
+            f"{target.school} {target.program} {target.page_type} page is anti-bot "
+            "protected; keep predicted."
+        ),
     }
 
 

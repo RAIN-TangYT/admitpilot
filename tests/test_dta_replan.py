@@ -51,8 +51,13 @@ def test_replan_marks_infeasible_when_critical_task_blocked() -> None:
     plan = service.build_plan(
         _strategy(),
         _intel(),
-        {"timeline_weeks": 8, "has_delay": True, "start_week": 2, "blocked_tasks": ["submission_batch_1"]},
+        {
+            "timeline_weeks": 8,
+            "has_delay": True,
+            "start_week": 2,
+            "blocked_tasks": ["submission_batch_1"],
+        },
     )
     red_messages = [item.message for item in plan.risk_markers if item.level == "red"]
-    assert any("关键任务阻塞" in msg for msg in red_messages)
-    assert any("排期不可行" in msg for msg in red_messages)
+    assert any("Critical tasks are blocked" in msg for msg in red_messages)
+    assert any("schedule infeasible" in msg for msg in red_messages)

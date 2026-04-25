@@ -1,0 +1,18 @@
+school: HKU
+program: MSAI
+hard_thresholds:
+  gpa_min: 3.0
+soft_thresholds:
+  gpa_target: 3.5
+  ielts_target: 6.5
+recommended_backgrounds:
+  - artificial intelligence
+  - machine learning
+  - mathematics
+risk_flags:
+  - competition_high
+  - language_requirement_unpublished
+  - early_application_preferred
+missing_input_penalties:
+  ielts: 0.06
+  experience: 0.03

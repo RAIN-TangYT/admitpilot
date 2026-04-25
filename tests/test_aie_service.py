@@ -40,8 +40,16 @@ def _seed_official_library(output_path: Path) -> None:
 def test_aie_service_uses_same_day_cache() -> None:
     service = _fixture_service()
 
-    first = service.retrieve(query="查看官网要求", cycle="2026", as_of_date=AS_OF_DATE)
-    second = service.retrieve(query="查看官网要求", cycle="2026", as_of_date=AS_OF_DATE)
+    first = service.retrieve(
+        query="Check official requirements",
+        cycle="2026",
+        as_of_date=AS_OF_DATE,
+    )
+    second = service.retrieve(
+        query="Check official requirements",
+        cycle="2026",
+        as_of_date=AS_OF_DATE,
+    )
 
     assert first.cache_hit_count == 0
     assert second.cache_hit_count >= 1
@@ -51,17 +59,21 @@ def test_runtime_aie_service_reads_official_library_by_default() -> None:
     output_dir = Path(".pytest-local")
     output_dir.mkdir(exist_ok=True)
     output_path = output_dir / "runtime_official_library.json"
+    case_output_path = output_dir / "runtime_empty_case_library.json"
     if output_path.exists():
         output_path.unlink()
+    if case_output_path.exists():
+        case_output_path.unlink()
     _seed_official_library(output_path)
     settings = AdmitPilotSettings(
         run_mode="test",
         official_library_path=str(output_path),
+        case_library_path=str(case_output_path),
     )
 
     service = build_runtime_aie_service(settings=settings)
     pack = service.retrieve(
-        query="关注本季政策变化",
+        query="Track current-cycle policy changes",
         cycle="2026",
         schools=["NUS", "HKUST"],
         as_of_date=AS_OF_DATE,
@@ -124,7 +136,7 @@ def test_runtime_aie_service_reads_case_library_by_default() -> None:
 
     service = build_runtime_aie_service(settings=settings)
     pack = service.retrieve(
-        query="结合案例看 NUS 申请竞争度",
+        query="Use cases to assess NUS competitiveness",
         cycle="2026",
         schools=["NUS"],
         program="MCOMP_CS",
@@ -141,7 +153,7 @@ def test_runtime_aie_service_reads_case_library_by_default() -> None:
 def test_aie_service_enforces_supported_school_scope() -> None:
     service = _fixture_service()
     pack = service.retrieve(
-        query="范围约束测试",
+        query="Scope constraint test",
         cycle="2026",
         schools=["mit", "stanford"],
         as_of_date=AS_OF_DATE,
@@ -154,7 +166,7 @@ def test_aie_service_appends_fetched_official_records_only_once() -> None:
     service = _fixture_service()
     base_count = len(service._official_long_memory)
     pack = service.retrieve(
-        query="查看官网要求",
+        query="Check official requirements",
         cycle="2026",
         schools=["HKUST"],
         as_of_date=AS_OF_DATE,

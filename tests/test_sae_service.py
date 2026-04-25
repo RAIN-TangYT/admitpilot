@@ -13,7 +13,15 @@ def _intel() -> AIEAgentOutput:
         "official_records": [],
         "case_records": [],
         "case_patterns": [],
-        "forecast_signals": [{"school": "HKU", "insight": "x", "confidence": 0.5, "basis": "b", "reason": "r"}],
+        "forecast_signals": [
+            {
+                "school": "HKU",
+                "insight": "x",
+                "confidence": 0.5,
+                "basis": "b",
+                "reason": "r",
+            }
+        ],
         "evidence_levels": {},
         "official_confidence": 0.7,
         "case_confidence": 0.6,
