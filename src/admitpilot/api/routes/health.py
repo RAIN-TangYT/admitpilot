@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter  # type: ignore[import-not-found]
+from fastapi import APIRouter
 
 from admitpilot.config import AdmitPilotSettings
 
