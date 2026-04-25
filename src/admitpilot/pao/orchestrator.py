@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import re
 import traceback
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from copy import deepcopy
-from dataclasses import dataclass, field
-from typing import Any, Optional, cast
+from dataclasses import dataclass, field, replace
+from typing import Any, cast
 from uuid import uuid4
 
 from admitpilot.agents.aie.agent import AIEAgent
@@ -20,6 +20,7 @@ from admitpilot.agents.dta.service import DynamicTimelineService
 from admitpilot.agents.sae.agent import SAEAgent
 from admitpilot.agents.sae.service import StrategicAdmissionsService
 from admitpilot.config import AdmitPilotSettings, load_settings
+from admitpilot.core.english import contains_cjk, english_items, english_or
 from admitpilot.core.schemas import (
     AgentResult,
     AgentTask,
@@ -31,7 +32,12 @@ from admitpilot.core.schemas import (
     SharedMemory,
     UserProfile,
 )
-from admitpilot.pao.contracts import OrchestrationRequest, OrchestrationResponse
+from admitpilot.domain.catalog import DEFAULT_ADMISSIONS_CATALOG
+from admitpilot.pao.contracts import (
+    OrchestrationEvent,
+    OrchestrationRequest,
+    OrchestrationResponse,
+)
 from admitpilot.pao.router import IntentRouter
 from admitpilot.pao.schemas import PaoGraphState, RoutePlan
 from admitpilot.platform import PlatformCommonBundle, build_default_platform_common_bundle
@@ -175,23 +181,7 @@ class PrincipalApplicationOrchestrator:
                 attrs={"query": request.user_query},
             )
             self.platform_bundle.metrics_collector.inc("workflow_invocations_total")
-        context = ApplicationContext(
-            user_query=request.user_query,
-            profile=request.profile,
-            constraints=request.constraints,
-            shared_memory=cast(SharedMemory, {}),
-            decisions={"trace_id": trace_id, "events": []},
-        )
-        initial_state: PaoGraphState = {
-            "query": request.user_query,
-            "context": context,
-            "workflow_status": WorkflowStatus.NEW,
-            "route_plan": RoutePlan(intent="", tasks=[], rationale=""),
-            "pending_tasks": [],
-            "current_task": None,
-            "results": [],
-            "final_summary": "",
-        }
+        initial_state = self._build_initial_state(request=request, trace_id=trace_id)
         state = self._graph.invoke(initial_state)
         if self.platform_bundle is not None:
             self.platform_bundle.trace_collector.end_span(
@@ -205,6 +195,92 @@ class PrincipalApplicationOrchestrator:
             context=state["context"],
         )
 
+    def stream(self, request: OrchestrationRequest) -> Iterator[OrchestrationEvent]:
+        """Run PAO and emit backend stage events after each real agent execution."""
+
+        trace_id = f"trace-{uuid4().hex}"
+        if self.platform_bundle is not None:
+            self.platform_bundle.trace_collector.start_span(
+                name="pao.stream",
+                trace_id=trace_id,
+                attrs={"query": request.user_query},
+            )
+            self.platform_bundle.metrics_collector.inc("workflow_invocations_total")
+        state = self._build_initial_state(request=request, trace_id=trace_id)
+        state = self._intake_node(state)
+        state = self._route_node(state)
+        yield OrchestrationEvent(
+            event="workflow_started",
+            data={
+                "trace_id": trace_id,
+                "stages": [
+                    {"agent": task.agent, "task": task.name}
+                    for task in state["pending_tasks"]
+                ],
+            },
+        )
+        while state["pending_tasks"]:
+            task = state["pending_tasks"][0]
+            yield OrchestrationEvent(
+                event="stage_started",
+                data={"trace_id": trace_id, "agent": task.agent, "task": task.name},
+            )
+            state = self._dispatch_node(state)
+            result = state["results"][-1]
+            yield OrchestrationEvent(
+                event="stage_completed",
+                data={
+                    "trace_id": trace_id,
+                    "agent": result.agent,
+                    "task": result.task,
+                    "status": result.status.value,
+                    "success": result.success,
+                    "result": result,
+                },
+            )
+        state = self._aggregate_node(state)
+        if self.platform_bundle is not None:
+            self.platform_bundle.trace_collector.end_span(
+                name="pao.stream",
+                trace_id=trace_id,
+                attrs={"workflow_status": state["workflow_status"].value},
+            )
+        yield OrchestrationEvent(
+            event="workflow_completed",
+            data={
+                "trace_id": trace_id,
+                "response": OrchestrationResponse(
+                    summary=state["final_summary"],
+                    results=state["results"],
+                    context=state["context"],
+                ),
+            },
+        )
+
+    def _build_initial_state(
+        self, *, request: OrchestrationRequest, trace_id: str
+    ) -> PaoGraphState:
+        context = ApplicationContext(
+            user_query=self._build_agent_user_query(
+                query=request.user_query,
+                plan=RoutePlan(intent="", tasks=[], rationale=""),
+            ),
+            profile=self._english_profile(request.profile),
+            constraints=self._english_context_value(request.constraints),
+            shared_memory=cast(SharedMemory, {}),
+            decisions={"trace_id": trace_id, "events": []},
+        )
+        return {
+            "query": request.user_query,
+            "context": context,
+            "workflow_status": WorkflowStatus.NEW,
+            "route_plan": RoutePlan(intent="", tasks=[], rationale=""),
+            "pending_tasks": [],
+            "current_task": None,
+            "results": [],
+            "final_summary": "",
+        }
+
     def _intake_node(self, state: PaoGraphState) -> PaoGraphState:
         next_status = self._workflow_state_machine.transition(
             current=state["workflow_status"],
@@ -213,7 +289,15 @@ class PrincipalApplicationOrchestrator:
         return {**state, "workflow_status": next_status}
 
     def _route_node(self, state: PaoGraphState) -> PaoGraphState:
-        plan = self.router.build_plan(state["query"])
+        plan = self._prepare_agent_plan(
+            plan=self.router.build_plan(state["query"]),
+            query=state["query"],
+        )
+        context = self._clone_context(state["context"])
+        context.user_query = self._build_agent_user_query(
+            query=state["query"],
+            plan=plan,
+        )
         next_status = self._workflow_state_machine.transition(
             current=state["workflow_status"],
             target=WorkflowStatus.PLAN_BUILT,
@@ -223,6 +307,7 @@ class PrincipalApplicationOrchestrator:
             "workflow_status": next_status,
             "route_plan": plan,
             "pending_tasks": list(plan.tasks),
+            "context": context,
         }
 
     def _dispatch_node(self, state: PaoGraphState) -> PaoGraphState:
@@ -271,7 +356,7 @@ class PrincipalApplicationOrchestrator:
                 task=task,
                 agent_name=task.agent,
                 reason="agent_not_registered",
-                message=f"未注册代理: {task.agent}",
+                message=f"Agent is not registered: {task.agent}",
             )
             if self.platform_bundle is not None:
                 self.platform_bundle.trace_collector.start_span(
@@ -431,12 +516,138 @@ class PrincipalApplicationOrchestrator:
 
     def _clone_context(self, context: ApplicationContext) -> ApplicationContext:
         return ApplicationContext(
-            user_query=context.user_query,
-            profile=context.profile,
-            constraints=dict(context.constraints),
+            user_query=english_or(context.user_query, "Application planning request."),
+            profile=self._english_profile(context.profile),
+            constraints=self._english_context_value(context.constraints),
             shared_memory=cast(SharedMemory, deepcopy(dict(context.shared_memory))),
             decisions=deepcopy(dict(context.decisions)),
         )
+
+    def _prepare_agent_plan(self, plan: RoutePlan, query: str) -> RoutePlan:
+        query_targets = self._extract_query_targets(query)
+        tasks: list[AgentTask] = []
+        for task in plan.tasks:
+            if task.agent != "aie":
+                tasks.append(task)
+                continue
+            payload = dict(task.payload)
+            if schools := query_targets.get("target_schools"):
+                payload.setdefault("target_schools", schools)
+            if program_by_school := query_targets.get("target_program_by_school"):
+                payload.setdefault("target_program_by_school", program_by_school)
+            if unsupported := query_targets.get("unsupported_program_by_school"):
+                payload.setdefault("unsupported_program_by_school", unsupported)
+            tasks.append(replace(task, payload=payload))
+        return RoutePlan(intent=plan.intent, tasks=tasks, rationale=plan.rationale)
+
+    def _build_agent_user_query(self, query: str, plan: RoutePlan) -> str:
+        english_query = english_or(query)
+        if english_query:
+            return english_query
+        query_targets = self._extract_query_targets(query)
+        parts = ["Application planning request."]
+        if plan.rationale:
+            parts.append(plan.rationale)
+        if plan.tasks:
+            task_names = ", ".join(task.name for task in plan.tasks)
+            parts.append(f"Requested agent tasks: {task_names}.")
+        if schools := query_targets.get("target_schools"):
+            parts.append(f"Target schools mentioned by the user: {', '.join(schools)}.")
+        if program_by_school := query_targets.get("target_program_by_school"):
+            program_parts = [
+                f"{school}/{program}" for school, program in program_by_school.items()
+            ]
+            parts.append(f"Target programs mentioned by the user: {', '.join(program_parts)}.")
+        if unsupported := query_targets.get("unsupported_program_by_school"):
+            unsupported_parts = [
+                f"{school}/{program}" for school, program in unsupported.items()
+            ]
+            parts.append(f"Unsupported program hints: {', '.join(unsupported_parts)}.")
+        return " ".join(parts)
+
+    def _extract_query_targets(self, query: str) -> dict[str, Any]:
+        catalog = DEFAULT_ADMISSIONS_CATALOG
+        schools = catalog.extract_school_codes_from_text(query)
+        program_by_school: dict[str, str] = {}
+        unsupported_program_by_school: dict[str, str] = {}
+        query_mentions_program = catalog.has_program_intent(query)
+        program_hint = english_or(catalog.extract_program_hint(query), "unsupported_program")
+        for school in schools:
+            query_programs = catalog.extract_program_codes_from_text(
+                query,
+                school_code=school,
+            )
+            if query_programs:
+                program_by_school[school] = query_programs[0]
+                continue
+            if query_mentions_program:
+                unsupported_program_by_school[school] = program_hint
+        return {
+            "target_schools": schools,
+            "target_program_by_school": program_by_school,
+            "unsupported_program_by_school": unsupported_program_by_school,
+        }
+
+    def _english_profile(self, profile: UserProfile) -> UserProfile:
+        return UserProfile(
+            name=english_or(profile.name),
+            degree_level=english_or(profile.degree_level),
+            major_interest=english_or(profile.major_interest),
+            target_regions=english_items(profile.target_regions),
+            academic_metrics=self._english_context_value(profile.academic_metrics),
+            language_scores=self._english_context_value(profile.language_scores),
+            experiences=english_items(profile.experiences),
+            target_schools=self._normalize_profile_schools(profile.target_schools),
+            target_programs=self._normalize_profile_programs(profile.target_programs),
+            risk_preference=english_or(profile.risk_preference, "balanced"),
+        )
+
+    def _normalize_profile_schools(self, schools: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for item in schools:
+            code = DEFAULT_ADMISSIONS_CATALOG.normalize_school_code(str(item))
+            if code is None or code in seen:
+                continue
+            normalized.append(code)
+            seen.add(code)
+        return normalized
+
+    def _normalize_profile_programs(self, programs: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for item in programs:
+            code = DEFAULT_ADMISSIONS_CATALOG.normalize_program_code(str(item))
+            text = code or english_or(item)
+            if not text or text in seen:
+                continue
+            normalized.append(text)
+            seen.add(text)
+        return normalized
+
+    def _english_context_value(self, value: Any) -> Any:
+        if isinstance(value, str):
+            return english_or(value)
+        if isinstance(value, dict):
+            sanitized: dict[str, Any] = {}
+            for raw_key, raw_value in value.items():
+                key = english_or(raw_key)
+                if not key:
+                    continue
+                sanitized[key] = self._english_context_value(raw_value)
+            return sanitized
+        if isinstance(value, list):
+            sanitized_list = [
+                sanitized
+                for item in value
+                if (sanitized := self._english_context_value(item)) not in ("", [], {})
+            ]
+            return sanitized_list
+        if isinstance(value, tuple):
+            return self._english_context_value(list(value))
+        if contains_cjk(value):
+            return ""
+        return value
 
     def _resolve_blockers(
         self,
@@ -514,7 +725,7 @@ class PrincipalApplicationOrchestrator:
         agent_name: str,
         reason: str,
         message: str,
-        trace: Optional[list[str]] = None,
+        trace: list[str] | None = None,
     ) -> AgentResult:
         return AgentResult(
             agent=agent_name,
@@ -538,7 +749,7 @@ class PrincipalApplicationOrchestrator:
             task=task.name,
             success=False,
             status=TaskStatus.SKIPPED,
-            output={"error": reason, "message": "依赖未满足，任务被跳过"},
+            output={"error": reason, "message": "Dependencies are not satisfied; task skipped."},
             confidence=0.0,
             trace=[f"{agent_name}:{task.name}:{reason}"],
             blocked_by=blocked_by,
@@ -628,9 +839,9 @@ class PrincipalApplicationOrchestrator:
             return intelligent_summary
         parts = [
             (
-                f"PAO已处理 {len(state['results'])} 个代理任务，"
+                f"PAO processed {len(state['results'])} agent tasks: "
                 f"success={success_count} failed={failed_count} skipped={skipped_count} "
-                f"workflow={workflow_status}。"
+                f"workflow={workflow_status}."
             )
         ]
         for item in state["results"]:
@@ -646,8 +857,8 @@ class PrincipalApplicationOrchestrator:
             return ""
         labels = [self._profile_field_label(item) for item in missing_fields]
         return (
-            "用户画像信息不完整，已暂停SAE择校及下游任务。"
-            f"请补充以下字段后重试：{', '.join(labels)}。"
+            "The applicant profile is incomplete, so SAE and downstream tasks are paused. "
+            f"Complete these fields and retry: {', '.join(labels)}."
         )
 
     def _collect_missing_profile_fields(self, results: list[AgentResult]) -> list[str]:
@@ -676,13 +887,13 @@ class PrincipalApplicationOrchestrator:
 
     def _profile_field_label(self, key: str) -> str:
         labels = {
-            "degree_level": "学历层次",
-            "major_interest": "专业方向",
-            "target_schools": "目标院校",
-            "target_programs": "目标项目",
+            "degree_level": "degree level",
+            "major_interest": "major interest",
+            "target_schools": "target schools",
+            "target_programs": "target programs",
             "academic_metrics.gpa": "GPA",
-            "language_scores": "语言成绩（IELTS/TOEFL）",
-            "experiences": "经历素材",
+            "language_scores": "language score (IELTS/TOEFL)",
+            "experiences": "experience materials",
         }
         return labels.get(key, key)
 
@@ -701,7 +912,7 @@ class PrincipalApplicationOrchestrator:
         source_urls_by_school = output.get("official_source_urls_by_school", {})
         status_by_school = output.get("official_status_by_school", {})
         official_records = output.get("official_records", [])
-        lines = [f"AIE 官网情报摘要（{cycle} 申请季）"]
+        lines = [f"AIE official intelligence summary ({cycle} cycle)"]
         for school in output.get("target_schools", []):
             program = target_program_by_school.get(
                 school,
@@ -709,7 +920,7 @@ class PrincipalApplicationOrchestrator:
             )
             status = status_by_school.get(school, "predicted")
             lines.append(
-                f"- {school} / {program}：{self._status_summary_label(status)}"
+                f"- {school} / {program}: {self._status_summary_label(status)}"
             )
             if status == "unsupported_program":
                 continue
@@ -720,24 +931,28 @@ class PrincipalApplicationOrchestrator:
             ]
             merged_fields = self._merge_extracted_fields(school_records)
             if deadline := str(merged_fields.get("application_deadline", "")).strip():
-                lines.append(f"  截止时间：{deadline}")
+                lines.append(f"  Deadline: {deadline}")
             if languages := merged_fields.get("language_requirements", []):
                 if isinstance(languages, list) and languages:
-                    lines.append(f"  语言要求：{', '.join(str(item) for item in languages[:4])}")
+                    lines.append(
+                        f"  Language requirements: {', '.join(str(item) for item in languages[:4])}"
+                    )
             if materials := merged_fields.get("required_materials", []):
                 if isinstance(materials, list) and materials:
-                    lines.append(f"  材料要求：{', '.join(str(item) for item in materials[:4])}")
+                    lines.append(
+                        f"  Required materials: {', '.join(str(item) for item in materials[:4])}"
+                    )
             if academic := str(merged_fields.get("academic_requirement", "")).strip():
-                lines.append(f"  学术要求：{self._truncate_text(academic, limit=120)}")
+                lines.append(f"  Academic requirement: {self._truncate_text(academic, limit=120)}")
             resolved_urls = self._resolve_official_source_urls(
                 school_records=school_records,
                 configured_urls=source_urls_by_school.get(school, {}),
             )
             for url_label, url in resolved_urls:
                 if url_label == "official":
-                    lines.append(f"  官方来源：{url}")
+                    lines.append(f"  Official source: {url}")
                 else:
-                    lines.append(f"  官方来源（{url_label}）：{url}")
+                    lines.append(f"  Official source ({url_label}): {url}")
         return "\n".join(lines)
 
     def _merge_extracted_fields(self, records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -815,10 +1030,10 @@ class PrincipalApplicationOrchestrator:
 
     def _status_summary_label(self, status: str) -> str:
         labels = {
-            "official_found": "已获取到本季官方页面",
-            "mixed": "已获取到部分官方页面，信息可能不完整",
-            "predicted": "当前仅有历史预测，尚未拿到本季完整官方页",
-            "unsupported_program": "该项目不在当前支持列表（unsupported_program）",
+            "official_found": "current-cycle official pages found",
+            "mixed": "partial official pages found; information may be incomplete",
+            "predicted": "forecast from historical records; current-cycle official pages missing",
+            "unsupported_program": "program is outside the supported catalog (unsupported_program)",
         }
         return labels.get(status, status)
 

@@ -1,19 +1,19 @@
-school: HKU
-program: MSCS
+school: NUS
+program: MTECH_DL
 hard_thresholds:
   gpa_min: 3.0
-  toefl_ibt_min: 80
+  experience_years_min: 5
 soft_thresholds:
-  gpa_target: 3.4
+  gpa_target: 3.3
   ielts_target: 6.5
 recommended_backgrounds:
-  - computer science
-  - software engineering
-  - systems
+  - digital transformation
+  - technology leadership
+  - business strategy
 risk_flags:
-  - competition_high
+  - senior_profile_expected
+  - interview_required
   - language_requirement_unpublished
-  - early_application_preferred
 missing_input_penalties:
   ielts: 0.06
   experience: 0.03

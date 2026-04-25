@@ -1,19 +1,18 @@
-school: NUS
-program: MCOMP_CS
+school: NTU
+program: MSCS
 hard_thresholds:
-  gpa_min: 3.2
+  gpa_min: 3.0
   ielts_min: 6.0
-  toefl_ibt_min: 90
+  toefl_ibt_min: 85
 soft_thresholds:
-  gpa_target: 3.6
+  gpa_target: 3.4
   ielts_target: 6.5
 recommended_backgrounds:
   - computer science
-  - algorithms
-  - software systems
+  - software engineering
+  - systems
 risk_flags:
   - competition_high
-  - it_experience_preferred
   - early_application_preferred
 missing_input_penalties:
   ielts: 0.06

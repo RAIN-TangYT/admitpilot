@@ -6,8 +6,11 @@ from dataclasses import dataclass, field
 
 from admitpilot.config import AdmitPilotSettings, load_settings
 from admitpilot.platform.common import ErrorCode
-from admitpilot.platform.governance import GovernanceSuite, build_default_governance_suite
-from admitpilot.platform.governance.contracts import GovernanceEngine
+from admitpilot.platform.governance import (
+    GovernanceEngine,
+    GovernanceSuite,
+    build_default_governance_suite,
+)
 from admitpilot.platform.mcp import (
     MCPServerRegistry,
     MethodSchemaRegistry,
@@ -15,8 +18,8 @@ from admitpilot.platform.mcp import (
     build_default_method_schema_registry,
 )
 from admitpilot.platform.memory import MemoryAdapterBundle, build_default_memory_adapters
-from admitpilot.platform.observability.contracts import MetricsCollector, TraceCollector
-from admitpilot.platform.security.capability import CapabilityManager
+from admitpilot.platform.observability import MetricsCollector, TraceCollector
+from admitpilot.platform.security import CapabilityManager
 from admitpilot.platform.tools import ToolRegistry, build_default_tool_registry
 
 

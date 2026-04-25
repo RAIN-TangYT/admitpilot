@@ -1,5 +1,5 @@
 school: NUS
-program: MCOMP_CS
+program: MCOMP_ISEC
 hard_thresholds:
   gpa_min: 3.2
   ielts_min: 6.0
@@ -8,9 +8,9 @@ soft_thresholds:
   gpa_target: 3.6
   ielts_target: 6.5
 recommended_backgrounds:
-  - computer science
-  - algorithms
-  - software systems
+  - cyber security
+  - computer networks
+  - secure systems
 risk_flags:
   - competition_high
   - it_experience_preferred

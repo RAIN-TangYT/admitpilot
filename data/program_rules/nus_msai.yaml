@@ -1,19 +1,18 @@
 school: NUS
-program: MCOMP_CS
+program: MSAI
 hard_thresholds:
   gpa_min: 3.2
-  ielts_min: 6.0
-  toefl_ibt_min: 90
+  experience_years_min: 1
 soft_thresholds:
   gpa_target: 3.6
   ielts_target: 6.5
 recommended_backgrounds:
-  - computer science
-  - algorithms
-  - software systems
+  - artificial intelligence
+  - machine learning
+  - statistics
 risk_flags:
   - competition_high
-  - it_experience_preferred
+  - language_requirement_unpublished
   - early_application_preferred
 missing_input_penalties:
   ielts: 0.06

@@ -1,0 +1,18 @@
+school: NUS
+program: EM_AIDT
+hard_thresholds:
+  experience_years_min: 8
+soft_thresholds:
+  gpa_target: 3.2
+  ielts_target: 6.5
+recommended_backgrounds:
+  - executive leadership
+  - ai strategy
+  - digital transformation
+risk_flags:
+  - executive_profile_required
+  - selection_interview_likely
+  - language_requirement_unpublished
+missing_input_penalties:
+  ielts: 0.06
+  experience: 0.03

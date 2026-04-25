@@ -5,8 +5,8 @@ AdmitPilot 是一个面向留学申请场景的多代理编排原型。系统由
 五校泛计算机项目的情报、策略、时间线与文书支持。
 
 当前仓库状态是“可演示原型”，不是生产应用。核心 CLI 流程与测试可运行，
-`Phase 1-5` 的答辩演示链路已收口；全量 live 官方页覆盖、生产持久化后端、
-异步任务与上线准备仍未进入当前范围。
+`Phase 1-5` 的答辩演示链路已收口；Web MVP 已加入 demo 登录与 SQLite
+运行历史持久化。全量 live 官方页覆盖、异步任务与上线准备仍未进入当前范围。
 
 ## 当前基线
 
@@ -17,18 +17,26 @@ AdmitPilot 是一个面向留学申请场景的多代理编排原型。系统由
 - AIE 测试模式官方库写入隔离到：`.pytest-local/runtime_official_library.test.json`
 - SAE 非 test 模式默认语义匹配：`embedding`；test 模式默认：`fake`
 - 官方库刷新入口：`python -m admitpilot.debug.refresh_official_library --cycle 2026`
-- 默认 demo 项目组合：
+- 默认 demo 项目组合（CLI `python -m admitpilot.main`）：
   - `NUS -> MCOMP_CS`
   - `NTU -> MSAI`
   - `HKU -> MSCS`
   - `CUHK -> MSCS`
   - `HKUST -> MSIT`
-- 最近验证命令：
-  - `python -m pytest -q`
-- 当前静态检查状态：
-  - `python -m ruff check src tests` 仍有行长、import 顺序和少量 typing 风格问题
-  - `python -m mypy src tests` 仍有类型标注、第三方 stub 和测试字典类型问题
+- 默认 demo 项目组合（Web `/api/v1/demo-profile`）：
+  - `NUS -> MTECH_AIS`
+  - `NTU -> MSAI`
+  - `HKU -> MSCS`
+  - `CUHK -> MSCS`
+  - `HKUST -> MSAI`
+- 最近验证命令（`2026-04-25`）：
+  - `python -m pytest -q`：通过
+  - `python -m ruff check src tests`：通过
+  - `python -m mypy src tests`：通过
 - 推荐运行环境：`admitpilot` conda 环境
+- Demo 登录账号：`demo@admitpilot.local`
+- Demo 登录密码：`admitpilot-demo`
+- Demo SQLite 数据库默认路径：`.admitpilot/admitpilot.sqlite3`
 
 ## 代码结构
 
@@ -87,9 +95,25 @@ python -m admitpilot.main
 API：
 
 ```bash
-$env:PYTHONPATH='src'
-python -m uvicorn admitpilot.api.main:app --reload
+python run_backend.py
 ```
+
+前端工作台：
+
+```bash
+cd frontend
+npm run dev
+```
+
+Web 演示流程：
+
+1. 打开 `http://localhost:3000`。
+2. 使用 `demo@admitpilot.local` / `admitpilot-demo` 登录。
+3. 点击 `Load Demo Profile`。
+4. 点击 `Run AdmitPilot`。
+5. 前端通过 WebSocket `/api/v1/orchestrations/ws` 接收后端真实阶段事件；等待 AIE / SAE / DTA / CDS 依次进入 running / completed。
+6. 在左侧 `Run History` 中点击任意历史记录，恢复该次 request 与 response。
+7. 点击历史记录右侧删除按钮，可删除单条运行历史。
 
 ## 质量检查
 
@@ -101,8 +125,7 @@ python -m pytest -q
 ```
 
 说明：
-- `2026-04-24` 全量 `pytest` 可通过。
-- `ruff` / `mypy` 当前还有静态检查债，未作为本轮 docs 更新的通过项记录。
+- `2026-04-25` 已验证 `pytest` / `ruff` / `mypy` 全量通过。
 
 ## 当前限制
 
@@ -112,6 +135,8 @@ python -m pytest -q
 - `SAE` 已完成规则打分与可替换语义匹配；无 API key 时 embedding matcher 会使用本地 fallback。
 - `DTA` 已完成拓扑排序、deadline 逆排与自动重排的演示范围实现。
 - `CDS` 已完成结构化证据、fact slots、模板层与一致性检查的演示范围实现。
+- Web MVP 已落地 demo 登录、Bearer session 与 SQLite 运行历史。
+- Web 工作台运行链路已改为 WebSocket 阶段事件，最终完成后仍持久化完整 run response。
 - 平台层默认仍是内存适配器，未落地 PostgreSQL / Redis / Object Storage。
 
 ## PyCharm 说明

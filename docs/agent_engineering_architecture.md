@@ -1,6 +1,6 @@
 # AdmitPilot Agent Engineering Architecture
 
-- 文档日期：`2026-04-24`
+- 文档日期：`2026-04-25`
 - 文档定位：当前代码基线的高层架构说明
 - 规范优先级：
   - 产品目标与课程背景：`docs/Project_Proposal_Group 26 (TANG Yutong, CHEN Jinghao, ZHANG Yufei, SHI Junren).docx`
@@ -104,7 +104,7 @@ AdmitPilot 当前是一个“可演示的多代理申请支持原型”，不是
 3. `DTA` 基于 `AIE + SAE` 生成计划
 4. `CDS` 基于 `SAE + DTA` 生成文书支持包
 
-当前默认 demo 组合：
+当前默认 demo 组合（CLI `python -m admitpilot.main`）：
 
 - `NUS -> MCOMP_CS`
 - `NTU -> MSAI`
@@ -112,9 +112,17 @@ AdmitPilot 当前是一个“可演示的多代理申请支持原型”，不是
 - `CUHK -> MSCS`
 - `HKUST -> MSIT`
 
+当前默认 demo 组合（Web `/api/v1/demo-profile`）：
+
+- `NUS -> MTECH_AIS`
+- `NTU -> MSAI`
+- `HKU -> MSCS`
+- `CUHK -> MSCS`
+- `HKUST -> MSAI`
+
 当前默认入口：
 - CLI：`python -m admitpilot.main`
-- API：`python -m uvicorn admitpilot.api.main:app --reload`
+- API：`python run_backend.py`（或 `python -m uvicorn admitpilot.api.main:app --reload`）
 - 官方库刷新：`python -m admitpilot.debug.refresh_official_library --cycle 2026`
 
 运行时数据基线：

@@ -1,4 +1,4 @@
-"""PAO 任务路由器实现。"""
+"""PAO task router."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from admitpilot.pao.schemas import RoutePlan
 
 @dataclass
 class IntentRouter:
-    """负责意图识别与任务拆解。"""
+    """Parse intent and build executable agent tasks."""
 
     default_intent: str = "composite_application_support"
     prerequisite_intents: dict[str, tuple[str, ...]] = field(
@@ -25,6 +25,8 @@ class IntentRouter:
                 "信息",
                 "政策",
                 "官网",
+                "official",
+                "requirement",
                 "deadline",
                 "截止",
                 "截止时间",
@@ -54,7 +56,7 @@ class IntentRouter:
         tasks = [
             AgentTask(
                 name="collect_intelligence",
-                description="收集并标准化招生情报",
+                description="Collect and normalize admissions intelligence.",
                 agent="aie",
             )
         ]
@@ -62,7 +64,7 @@ class IntentRouter:
             tasks.append(
                 AgentTask(
                     name="evaluate_strategy",
-                    description="完成选校分层与风险排序",
+                    description="Evaluate school tiers and risk-aware ranking.",
                     agent="sae",
                     depends_on=["collect_intelligence"],
                     required_memory=["aie"],
@@ -72,7 +74,7 @@ class IntentRouter:
             tasks.append(
                 AgentTask(
                     name="build_timeline",
-                    description="生成周级执行计划",
+                    description="Generate the weekly application execution plan.",
                     agent="dta",
                     depends_on=["evaluate_strategy"],
                     required_memory=["aie", "sae"],
@@ -82,7 +84,7 @@ class IntentRouter:
             tasks.append(
                 AgentTask(
                     name="draft_documents",
-                    description="输出文书与面试素材建议",
+                    description="Draft document and interview support materials.",
                     agent="cds",
                     depends_on=["evaluate_strategy", "build_timeline"],
                     required_memory=["sae", "dta"],
@@ -90,10 +92,10 @@ class IntentRouter:
                 )
             )
 
-        rationale = f"匹配到意图: {', '.join(sorted(matched))}"
+        rationale = f"Matched intents: {', '.join(sorted(matched))}"
         expanded = sorted(selected - matched)
         if expanded:
-            rationale += f"; 自动补全依赖意图: {', '.join(expanded)}"
+            rationale += f"; added prerequisite intents: {', '.join(expanded)}"
         return RoutePlan(intent=self.default_intent, tasks=tasks, rationale=rationale)
 
     def _expand_prerequisite_intents(self, selected: set[str]) -> set[str]:
