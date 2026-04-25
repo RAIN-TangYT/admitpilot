@@ -5,7 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal, cast
 
-EvidenceType = Literal["course", "project", "internship", "research", "award", "language", "referee"]
+EvidenceType = Literal[
+    "course",
+    "project",
+    "internship",
+    "research",
+    "award",
+    "language",
+    "referee",
+]
 _ALLOWED_EVIDENCE_TYPES = {
     "course",
     "project",

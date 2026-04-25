@@ -15,8 +15,10 @@ def check_consistency(drafts: list[DocumentDraft]) -> list[ConsistencyIssue]:
         issues.append(
             ConsistencyIssue(
                 severity="medium",
-                message="存在未完全核验证据槽位（inferred/missing）",
-                impacted_documents=[f"{item.document_type}:{item.target_school}" for item in drafts],
+                message="Some fact slots are inferred or missing and require verification.",
+                impacted_documents=[
+                    f"{item.document_type}:{item.target_school}" for item in drafts
+                ],
             )
         )
 
@@ -25,8 +27,10 @@ def check_consistency(drafts: list[DocumentDraft]) -> list[ConsistencyIssue]:
         issues.append(
             ConsistencyIssue(
                 severity="high",
-                message="跨文档 execution_proof 表述冲突（时间线不一致）",
-                impacted_documents=[f"{item.document_type}:{item.target_school}" for item in drafts],
+                message="execution_proof conflicts across documents.",
+                impacted_documents=[
+                    f"{item.document_type}:{item.target_school}" for item in drafts
+                ],
             )
         )
 
@@ -35,8 +39,10 @@ def check_consistency(drafts: list[DocumentDraft]) -> list[ConsistencyIssue]:
         issues.append(
             ConsistencyIssue(
                 severity="high",
-                message="跨文档 motivation_core 表述冲突（经历叙事不一致）",
-                impacted_documents=[f"{item.document_type}:{item.target_school}" for item in drafts],
+                message="motivation_core conflicts across documents.",
+                impacted_documents=[
+                    f"{item.document_type}:{item.target_school}" for item in drafts
+                ],
             )
         )
 
@@ -73,7 +79,10 @@ def _check_school_name_alignment(drafts: list[DocumentDraft]) -> list[Consistenc
             issues.append(
                 ConsistencyIssue(
                     severity="medium",
-                    message=f"{draft.document_type}:{draft.target_school} 未出现目标学校名，存在项目名称对齐风险",
+                    message=(
+                        f"{draft.document_type}:{draft.target_school} does not mention "
+                        "the target school name."
+                    ),
                     impacted_documents=[f"{draft.document_type}:{draft.target_school}"],
                 )
             )

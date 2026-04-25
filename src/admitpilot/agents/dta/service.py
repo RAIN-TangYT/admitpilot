@@ -12,12 +12,13 @@ from admitpilot.agents.dta.replan import apply_replan
 from admitpilot.agents.dta.scheduler import schedule_milestones
 from admitpilot.agents.dta.schemas import Milestone, RiskMarker, TimelinePlan, WeekTask
 from admitpilot.config import AdmitPilotSettings
+from admitpilot.core.english import english_items, english_or
 from admitpilot.core.schemas import AIEAgentOutput, SAEAgentOutput
 from admitpilot.platform.llm.openai import OpenAIClient
 
 
 class DynamicTimelineService:
-    """负责将策略结果转化为可执行周计划。"""
+    """Convert strategy output into an executable weekly plan."""
 
     DEFAULT_WEEKS = 8
 
@@ -30,7 +31,7 @@ class DynamicTimelineService:
         intelligence: AIEAgentOutput,
         constraints: dict[str, Any],
     ) -> TimelinePlan:
-        """基于优先级与约束生成动态执行板。"""
+        """Build a dynamic execution board from priority and constraint inputs."""
         timezone = str(constraints.get("timezone", "UTC"))
         cycle = str(constraints.get("cycle", "2026"))
         schools = intelligence.get("target_schools", [])
@@ -71,8 +72,11 @@ class DynamicTimelineService:
                 RiskMarker(
                     week=1,
                     level="red",
-                    message="当前约束下排期不可行",
-                    mitigation="调整启动周、解除阻塞任务或缩减项目范围后重算",
+                    message="The current constraints make the schedule infeasible.",
+                    mitigation=(
+                        "Adjust the start week, unblock critical tasks, "
+                        "or reduce the target scope and re-run the plan."
+                    ),
                 )
             )
         document_instructions = self._build_document_instructions(
@@ -88,7 +92,7 @@ class DynamicTimelineService:
             document_instructions=document_instructions,
         )
         return TimelinePlan(
-            title=f"{cycle}申请季执行板 ({timezone})",
+            title=f"{cycle} application execution board ({timezone})",
             milestones=replan.milestones,
             weeks=weeks,
             risk_markers=risk_markers,
@@ -101,9 +105,9 @@ class DynamicTimelineService:
         recommendations: list[dict[str, Any]],
         schools: list[str],
     ) -> list[Milestone]:
-        """构建里程碑依赖图骨架。
+        """Build a milestone dependency graph.
 
-        基于 SAE 输出的 gap_actions 动态添加前置里程碑节点。
+        Front-load milestones based on SAE gap actions.
         """
         active_schools = schools or [
             item.get("school", "") for item in recommendations if item.get("school")
@@ -111,25 +115,32 @@ class DynamicTimelineService:
         school_scope = [item for item in active_schools if item]
 
         milestones = [
-            Milestone(key="scope_lock", title="锁定项目池与优先级", due_week=1),
+            Milestone(key="scope_lock", title="Lock portfolio scope and priority", due_week=1),
         ]
 
-        # 动态解析 SAE 的 Gap Actions
         gap_actions = strategy.get("gap_actions", [])
-        language_keywords = ["语言", "雅思", "托福", "IELTS", "TOEFL"]
-        background_keywords = ["科研", "实习", "项目", "课程"]
+        language_keywords = ["english", "ielts", "toefl", "language"]
+        background_keywords = [
+            "research",
+            "internship",
+            "project",
+            "course",
+            "evidence",
+            "outcome",
+        ]
+        normalized_actions = [str(action).lower() for action in gap_actions]
         has_language_gap = any(
-            keyword in action for action in gap_actions for keyword in language_keywords
+            keyword in action for action in normalized_actions for keyword in language_keywords
         )
         has_bg_gap = any(
-            keyword in action for action in gap_actions for keyword in background_keywords
+            keyword in action for action in normalized_actions for keyword in background_keywords
         )
 
         if has_language_gap:
             milestones.append(
                 Milestone(
                     key="language_test",
-                    title="完成语言标化考试出分",
+                    title="Complete standardized English test score",
                     due_week=2,
                     depends_on=["scope_lock"],
                 )
@@ -139,7 +150,7 @@ class DynamicTimelineService:
             milestones.append(
                 Milestone(
                     key="background_enhancement",
-                    title="完成背景提升核心产出 (项目/实习)",
+                    title="Complete core background enhancement outputs",
                     due_week=4,
                     depends_on=["scope_lock"],
                 )
@@ -149,19 +160,19 @@ class DynamicTimelineService:
             [
                 Milestone(
                     key="doc_pack_v1",
-                    title="完成 SoP/CV 第一版",
+                    title="Complete first SOP/CV draft",
                     due_week=3 if not has_bg_gap else 5,
                     depends_on=["scope_lock"],
                 ),
                 Milestone(
                     key="submission_batch_1",
-                    title="完成第一批网申提交",
+                    title="Submit first application batch",
                     due_week=6,
                     depends_on=["doc_pack_v1"],
                 ),
                 Milestone(
                     key="interview_prep",
-                    title="完成面试问题集与模拟",
+                    title="Complete interview question bank and mock practice",
                     due_week=7,
                     depends_on=["submission_batch_1"],
                 ),
@@ -172,7 +183,7 @@ class DynamicTimelineService:
             milestones.append(
                 Milestone(
                     key="buffer_window",
-                    title="预留缓冲周处理补件与系统波动",
+                    title="Reserve buffer week for supplements and portal issues",
                     due_week=8,
                     depends_on=["submission_batch_1"],
                 )
@@ -185,9 +196,9 @@ class DynamicTimelineService:
         constraints: dict[str, Any],
         total_weeks: int,
     ) -> list[Milestone]:
-        """里程碑调度骨架。
+        """Schedule milestones.
 
-        TODO: 实现拓扑排序 + deadline 逆排 + 自动重排。
+        TODO: Add topological ordering, reverse deadline planning, and auto-replan.
         """
         delayed = bool(constraints.get("has_delay", False))
         scheduled: list[Milestone] = []
@@ -210,14 +221,14 @@ class DynamicTimelineService:
         weeks: list[WeekTask] = []
         for week in range(1, total_weeks + 1):
             week_milestones = [item.title for item in milestones if item.due_week == week]
-            items = week_milestones or [f"推进第 {week} 周标准申请任务"]
+            items = week_milestones or [f"Advance standard week {week} application tasks"]
             risks: list[str] = []
             if week >= total_weeks - 1:
-                risks.append("截止期密集，建议冻结非必要改动")
+                risks.append("Deadline cluster ahead; freeze non-essential edits.")
             weeks.append(
                 WeekTask(
                     week=week,
-                    focus="里程碑推进" if week_milestones else "常规推进",
+                    focus="Milestone execution" if week_milestones else "Standard execution",
                     items=items,
                     risks=risks,
                     school_scope=schools,
@@ -234,8 +245,8 @@ class DynamicTimelineService:
                 RiskMarker(
                     week=2,
                     level="yellow",
-                    message="部分学校当前季信息未完全发布",
-                    mitigation="每周同步官方页面更新，触发策略与排期重算",
+                    message="Some schools have incomplete current-cycle official information.",
+                    mitigation="Refresh official pages weekly and re-run strategy or timeline.",
                 )
             )
         for item in milestones:
@@ -244,8 +255,8 @@ class DynamicTimelineService:
                     RiskMarker(
                         week=item.due_week,
                         level="red",
-                        message="首批提交窗口，系统拥堵与材料缺失风险上升",
-                        mitigation="提前 5-7 天完成提交并进行双人核验",
+                        message="First submission window raises portal and material-missing risk.",
+                        mitigation="Submit 5-7 days early and run a two-person verification.",
                     )
                 )
         return markers
@@ -253,13 +264,15 @@ class DynamicTimelineService:
     def _build_document_instructions(
         self, milestones: list[Milestone], schools: list[str]
     ) -> list[str]:
-        school_scope = ",".join(schools) if schools else "目标学校"
+        school_scope = ", ".join(schools) if schools else "target schools"
         instructions = [
-            f"按 {school_scope} 维度维护 SoP/CV 版本矩阵。",
-            "每次里程碑完成后更新事实槽位与变更日志。",
+            f"Maintain an SOP/CV version matrix by school for {school_scope}.",
+            "Update fact slots and the change log after each milestone.",
         ]
         if any(item.key == "interview_prep" for item in milestones):
-            instructions.append("在面试准备节点前完成英文一分钟自述与项目匹配问答模板。")
+            instructions.append(
+                "Prepare a one-minute English self-introduction and program-fit Q&A template."
+            )
         return instructions
 
     def _resolve_total_weeks(self, constraints: dict[str, Any]) -> int:
@@ -306,22 +319,22 @@ class DynamicTimelineService:
         prompt = "\n".join(
             [
                 (
-                    "你是一个严格的留学时间线规划师。请结合该申请者的优劣势 "
-                    "(strengths/weaknesses) 和短板提升行动 (gap_actions)，为每个 "
-                    "week 生成具体、可执行的 weekly_focus 和 week_items。"
+                    "You are a strict admissions timeline planner. "
+                    "Use strengths, weaknesses, and gap_actions to generate "
+                    "specific executable weekly_focus and week_items for each week."
                 ),
                 (
-                    "必须输出合法的 JSON 格式。避免在字符串中使用未转义的双引号，"
-                    "请检查括号与逗号是否闭合。"
+                    "Return valid JSON only. Avoid unescaped quotation marks inside strings, "
+                    "and ensure brackets and commas are valid."
                 ),
-                "请基于输入输出 JSON。",
                 (
-                    '返回格式：{"milestone_titles":{"scope_lock":"..."},"weekly_focus":{"1":"..."},'
+                    'Return format: {"milestone_titles":{"scope_lock":"..."},'
+                    '"weekly_focus":{"1":"..."},'
                     '"week_items":{"1":["..."]},"risk_markers":[{"week":2,"level":"yellow","message":"...","mitigation":"..."}],'
                     '"document_instructions":["..."]}'
                 ),
-                "不要输出 markdown。",
-                json.dumps(payload, ensure_ascii=False, default=str),
+                "Do not output markdown. All text values must be English.",
+                json.dumps(payload, ensure_ascii=True, default=str),
             ]
         )
         try:
@@ -335,22 +348,21 @@ class DynamicTimelineService:
         milestone_titles = result.get("milestone_titles", {})
         if isinstance(milestone_titles, dict):
             for item in milestones:
-                title = str(milestone_titles.get(item.key, "")).strip()
+                title = english_or(milestone_titles.get(item.key))
                 if title:
                     item.title = title
         weekly_focus = result.get("weekly_focus", {})
         week_items = result.get("week_items", {})
         for week_entry in weeks:
             if isinstance(weekly_focus, dict):
-                focus = str(weekly_focus.get(str(week_entry.week), "")).strip()
+                focus = english_or(weekly_focus.get(str(week_entry.week)))
                 if focus:
                     week_entry.focus = focus
             if isinstance(week_items, dict):
                 items = week_items.get(str(week_entry.week))
-                if isinstance(items, list):
-                    normalized = [text for raw in items if (text := str(raw).strip())]
-                    if normalized:
-                        week_entry.items = normalized
+                normalized = english_items(items)
+                if normalized:
+                    week_entry.items = normalized
         llm_risks = result.get("risk_markers", [])
         if isinstance(llm_risks, list):
             normalized_risks: list[RiskMarker] = []
@@ -361,9 +373,9 @@ class DynamicTimelineService:
                     week = int(raw.get("week", 0))
                 except (TypeError, ValueError):
                     continue
-                message = str(raw.get("message", "")).strip()
-                mitigation = str(raw.get("mitigation", "")).strip()
-                level = str(raw.get("level", "yellow")).strip() or "yellow"
+                message = english_or(raw.get("message"))
+                mitigation = english_or(raw.get("mitigation"))
+                level = english_or(raw.get("level"), "yellow")
                 if week > 0 and message and mitigation:
                     normalized_risks.append(
                         RiskMarker(
@@ -376,10 +388,7 @@ class DynamicTimelineService:
             if normalized_risks:
                 risk_markers = normalized_risks
         llm_instructions = result.get("document_instructions")
-        if isinstance(llm_instructions, list):
-            normalized_instructions = [
-                text for raw in llm_instructions if (text := str(raw).strip())
-            ]
-            if normalized_instructions:
-                document_instructions = normalized_instructions
+        normalized_instructions = english_items(llm_instructions)
+        if normalized_instructions:
+            document_instructions = normalized_instructions
         return milestones, weeks, risk_markers, document_instructions

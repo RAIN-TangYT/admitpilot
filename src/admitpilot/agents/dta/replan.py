@@ -39,8 +39,8 @@ def apply_replan(
             RiskMarker(
                 week=total_weeks,
                 level="red",
-                message="启动周晚于排期窗口，当前计划不可执行",
-                mitigation="缩减申请范围或延后申请季",
+                message="Start week is later than the available planning window.",
+                mitigation="Reduce the application scope or move to a later cycle.",
             )
         )
 
@@ -51,8 +51,8 @@ def apply_replan(
             RiskMarker(
                 week=min(total_weeks, start_week),
                 level="red",
-                message=f"关键任务阻塞: {','.join(sorted(blocked_critical))}",
-                mitigation="解除关键阻塞后再生成排期",
+                message=f"Critical tasks are blocked: {','.join(sorted(blocked_critical))}",
+                mitigation="Unblock critical tasks before regenerating the timeline.",
             )
         )
 
@@ -64,8 +64,8 @@ def apply_replan(
             RiskMarker(
                 week=min(week for week, count in week_counts.items() if count >= 3),
                 level="yellow",
-                message="同周里程碑过于集中，存在任务挤压",
-                mitigation="拆分非关键任务到前后周并增加缓冲",
+                message="Too many milestones are concentrated in the same week.",
+                mitigation="Move non-critical tasks to adjacent weeks and add buffer.",
             )
         )
 
@@ -75,8 +75,8 @@ def apply_replan(
             RiskMarker(
                 week=submission.due_week,
                 level="red",
-                message="提交节点逼近窗口末端，缓冲不足",
-                mitigation="前移文书与网申准备，避免截止前集中提交",
+                message="Submission milestone is too close to the end of the window.",
+                mitigation="Move document and portal preparation earlier.",
             )
         )
     return ReplanResult(milestones=shifted, risks=risks, feasible=feasible)

@@ -1,7 +1,8 @@
 from admitpilot.agents.cds.service import CoreDocumentService
+from admitpilot.core.schemas import DTAAgentOutput, SAEAgentOutput
 
 
-def _strategy() -> dict:
+def _strategy() -> SAEAgentOutput:
     return {
         "summary": "ok",
         "model_breakdown": {},
@@ -13,7 +14,7 @@ def _strategy() -> dict:
     }
 
 
-def _timeline() -> dict:
+def _timeline() -> DTAAgentOutput:
     return {
         "board_title": "board",
         "milestones": [{"key": "doc_pack_v1"}],
@@ -25,36 +26,42 @@ def _timeline() -> dict:
 
 def test_cds_abstains_when_upstream_context_is_missing() -> None:
     service = CoreDocumentService()
+    empty_strategy: SAEAgentOutput = {
+        "summary": "",
+        "model_breakdown": {},
+        "strengths": [],
+        "weaknesses": [],
+        "gap_actions": [],
+        "recommendations": [],
+        "ranking_order": [],
+    }
+    empty_timeline: DTAAgentOutput = {
+        "board_title": "",
+        "milestones": [],
+        "weekly_plan": [],
+        "risk_markers": [],
+        "document_instructions": [],
+    }
 
     pack = service.build_support_pack(
-        strategy={
-            "summary": "",
-            "model_breakdown": {},
-            "strengths": [],
-            "weaknesses": [],
-            "gap_actions": [],
-            "recommendations": [],
-            "ranking_order": [],
-        },
-        timeline={
-            "board_title": "",
-            "milestones": [],
-            "weekly_plan": [],
-            "risk_markers": [],
-            "document_instructions": [],
-        },
+        strategy=empty_strategy,
+        timeline=empty_timeline,
     )
 
     assert pack.drafts == []
     assert pack.consistency_issues[0].severity == "high"
-    assert "缺少上游" in pack.consistency_issues[0].message
-    assert "先补齐上游" in pack.review_checklist[0]
-    assert "正式面试要点" in pack.interview_cues[0].cue
+    assert "Missing upstream" in pack.consistency_issues[0].message
+    assert "Complete upstream" in pack.review_checklist[0]
+    assert "formal interview cues" in pack.interview_cues[0].cue
 
 
 def test_cds_service_abstains_when_core_evidence_missing() -> None:
     service = CoreDocumentService()
-    pack = service.build_support_pack(strategy=_strategy(), timeline=_timeline(), user_artifacts_payload=[])
+    pack = service.build_support_pack(
+        strategy=_strategy(),
+        timeline=_timeline(),
+        user_artifacts_payload=[],
+    )
     assert pack.drafts == []
     assert any("CDS abstain" in item.message for item in pack.consistency_issues)
 

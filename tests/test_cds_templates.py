@@ -1,7 +1,8 @@
 from admitpilot.agents.cds.service import CoreDocumentService
+from admitpilot.core.schemas import DTAAgentOutput, SAEAgentOutput
 
 
-def _timeline() -> dict:
+def _timeline() -> DTAAgentOutput:
     return {
         "board_title": "board",
         "milestones": [{"key": "submission_batch_1", "due_week": 4}],
@@ -11,7 +12,7 @@ def _timeline() -> dict:
     }
 
 
-def _strategy(schools: list[str]) -> dict:
+def _strategy(schools: list[str]) -> SAEAgentOutput:
     recs = []
     for school in schools:
         recs.append(
@@ -34,7 +35,7 @@ def _strategy(schools: list[str]) -> dict:
     }
 
 
-def _artifacts() -> list[dict[str, object]]:
+def _artifacts() -> list[dict[str, str | bool]]:
     return [
         {
             "artifact_id": "proj-1",
@@ -68,6 +69,10 @@ def test_templates_include_upstream_gap_and_risk_flags() -> None:
         timeline=_timeline(),
         user_artifacts_payload=_artifacts(),
     )
-    sop = next(item for item in pack.drafts if item.document_type == "sop" and item.target_school == "NUS")
+    sop = next(
+        item
+        for item in pack.drafts
+        if item.document_type == "sop" and item.target_school == "NUS"
+    )
     assert any("NUS-gap" in risk for risk in sop.risks)
     assert any("NUS-risk" in risk for risk in sop.risks)

@@ -17,13 +17,14 @@ from admitpilot.agents.cds.schemas import (
 )
 from admitpilot.agents.cds.templates import build_cv_outline, build_sop_outline
 from admitpilot.config import AdmitPilotSettings
+from admitpilot.core.english import english_items, english_or
 from admitpilot.core.schemas import DTAAgentOutput, SAEAgentOutput
 from admitpilot.core.user_artifacts import UserArtifactsBundle, parse_user_artifacts
 from admitpilot.platform.llm.openai import OpenAIClient
 
 
 class CoreDocumentService:
-    """负责文书叙事与面试素材生成。"""
+    """Generate document narratives and interview support materials."""
 
     def __init__(self, llm_client: OpenAIClient | None = None) -> None:
         self.llm_client = llm_client or OpenAIClient(settings=AdmitPilotSettings(run_mode="test"))
@@ -34,7 +35,7 @@ class CoreDocumentService:
         timeline: DTAAgentOutput,
         user_artifacts_payload: list[dict[str, str | bool]] | None = None,
     ) -> DocumentSupportPack:
-        """根据策略和时间线输出文书与面试支持包。"""
+        """Build the document and interview support pack from strategy and timeline."""
         if self._missing_upstream_context(strategy=strategy, timeline=timeline):
             return self._build_missing_evidence_pack(strategy=strategy, timeline=timeline)
         recommendations = strategy.get("recommendations", [])
@@ -70,13 +71,16 @@ class CoreDocumentService:
                 0,
                 ConsistencyIssue(
                     severity="high",
-                    message=f"核心证据缺失，CDS abstain: {abstain_reason}",
+                    message=f"Core evidence is missing; CDS abstain: {abstain_reason}",
                     impacted_documents=["sop", "cv", "interview"],
                 ),
             )
         checklist = self._build_review_checklist(issues=issues)
         if abstain:
-            checklist.insert(0, "先补齐核心证据（project/research + source_ref）再生成正式草稿")
+            checklist.insert(
+                0,
+                "Add core project or research evidence with source_ref before formal drafts.",
+            )
         checklist = self._llm_refine_checklist(issues=issues, checklist=checklist)
         return DocumentSupportPack(
             drafts=drafts,
@@ -97,24 +101,27 @@ class CoreDocumentService:
     ) -> DocumentSupportPack:
         missing_inputs: list[str] = []
         if not strategy.get("recommendations") or not strategy.get("ranking_order"):
-            missing_inputs.append("选校策略")
+            missing_inputs.append("school strategy")
         if not timeline.get("milestones") or not timeline.get("weekly_plan"):
-            missing_inputs.append("时间线")
-        missing_summary = "、".join(missing_inputs) or "上游上下文"
+            missing_inputs.append("timeline")
+        missing_summary = ", ".join(missing_inputs) or "upstream context"
         issue = ConsistencyIssue(
             severity="high",
-            message=f"缺少上游{missing_summary}，当前不生成正式文书草稿与面试材料",
+            message=(
+                f"Missing upstream {missing_summary}; formal document drafts "
+                "and interview materials are not generated."
+            ),
             impacted_documents=["sop", "cv", "interview"],
         )
         checklist = [
-            f"先补齐上游{missing_summary}，再生成个性化文书与面试材料",
-            "补充可验证的经历事实、项目匹配证据与执行安排",
-            "上游结果就绪后重新运行 CDS，避免基于缺证据内容继续润色",
+            f"Complete upstream {missing_summary} before personalized documents.",
+            "Add verifiable experience facts, program-fit evidence, and execution details.",
+            "Re-run CDS after upstream outputs are ready.",
         ]
         interview_cues = [
             InterviewCue(
-                question="当前状态",
-                cue=f"缺少{missing_summary}，暂不生成正式面试要点。",
+                question="Current status",
+                cue=f"Missing {missing_summary}; formal interview cues are not generated.",
             )
         ]
         return DocumentSupportPack(
@@ -189,18 +196,24 @@ class CoreDocumentService:
     def _build_interview_cues(
         self, recommendations: list[dict[str, Any]], timeline: DTAAgentOutput
     ) -> list[InterviewCue]:
-        first_school = "目标项目"
+        first_school = "target program"
         if recommendations:
             first_school = str(recommendations[0].get("school", first_school))
         weekly_count = len(timeline.get("weekly_plan", []))
         return [
             InterviewCue(
-                question="为什么选择这个项目？",
-                cue=f"从 {first_school} 的课程与研究资源切入，映射个人目标。",
+                question="Why this program?",
+                cue=(
+                    f"Start from {first_school} coursework and research resources, "
+                    "then map them to the applicant's goals."
+                ),
             ),
             InterviewCue(
-                question="你如何证明执行力？",
-                cue=f"用 {weekly_count} 周执行板中的里程碑交付证明计划落地能力。",
+                question="How do you prove execution ability?",
+                cue=(
+                    f"Use milestone deliverables from the {weekly_count}-week board "
+                    "to show execution discipline."
+                ),
             ),
         ]
 
@@ -214,7 +227,7 @@ class CoreDocumentService:
             issues.append(
                 ConsistencyIssue(
                     severity="high",
-                    message="核心文档缺失，无法进行跨文档一致性审查",
+                    message="Core documents are missing; cross-document review cannot run.",
                     impacted_documents=["sop", "cv"],
                 )
             )
@@ -222,12 +235,12 @@ class CoreDocumentService:
 
     def _build_review_checklist(self, issues: list[ConsistencyIssue]) -> list[str]:
         checklist = [
-            "核验所有事实槽位与原始证明材料一致",
-            "确认 SoP/CV/面试话术中的时间线一致",
-            "检查每所学校版本是否体现差异化项目匹配",
+            "Verify every fact slot against original evidence.",
+            "Confirm timeline consistency across SOP, CV, and interview talking points.",
+            "Check that each school version shows differentiated program fit.",
         ]
         if issues:
-            checklist.insert(0, "优先解决一致性告警后再进入下一轮润色")
+            checklist.insert(0, "Resolve consistency warnings before the next polish round.")
         return checklist
 
     def _llm_refine_support_pack(
@@ -260,13 +273,16 @@ class CoreDocumentService:
         }
         prompt = "\n".join(
             [
-                "请基于输入输出 JSON。",
                 (
-                    '返回格式：{"drafts":[{"document_type":"sop","target_school":"NUS","content_outline":["..."],"risks":["..."]}],'
+                    "Generate JSON in English only. Do not output markdown or "
+                    "any non-English narrative."
+                ),
+                (
+                    'Return format: {"drafts":[{"document_type":"sop",'
+                    '"target_school":"NUS","content_outline":["..."],"risks":["..."]}],'
                     '"interview_cues":[{"question":"...","cue":"..."}]}'
                 ),
-                "不要输出 markdown。",
-                json.dumps(payload, ensure_ascii=False, default=str),
+                json.dumps(payload, ensure_ascii=True, default=str),
             ]
         )
         try:
@@ -292,22 +308,20 @@ class CoreDocumentService:
                 draft = draft_lookup[key]
                 outlines = raw.get("content_outline")
                 risks = raw.get("risks")
-                if isinstance(outlines, list):
-                    normalized_outlines = [text for item in outlines if (text := str(item).strip())]
-                    if normalized_outlines:
-                        draft.content_outline = normalized_outlines
-                if isinstance(risks, list):
-                    normalized_risks = [text for item in risks if (text := str(item).strip())]
-                    if normalized_risks:
-                        draft.risks = normalized_risks
+                normalized_outlines = english_items(outlines)
+                if normalized_outlines:
+                    draft.content_outline = normalized_outlines
+                normalized_risks = english_items(risks)
+                if normalized_risks:
+                    draft.risks = normalized_risks
         llm_cues = result.get("interview_cues", [])
         if isinstance(llm_cues, list):
             normalized_cues: list[InterviewCue] = []
             for raw in llm_cues:
                 if not isinstance(raw, dict):
                     continue
-                question = str(raw.get("question", "")).strip()
-                cue = str(raw.get("cue", "")).strip()
+                question = english_or(raw.get("question"))
+                cue = english_or(raw.get("cue"))
                 if question and cue:
                     normalized_cues.append(InterviewCue(question=question, cue=cue))
             if normalized_cues:
@@ -332,10 +346,9 @@ class CoreDocumentService:
         }
         prompt = "\n".join(
             [
-                "请基于输入输出 JSON。",
-                '返回格式：{"review_checklist":["..."]}',
-                "不要输出 markdown。",
-                json.dumps(payload, ensure_ascii=False, default=str),
+                "Generate JSON in English only. Do not output markdown.",
+                'Return format: {"review_checklist":["..."]}',
+                json.dumps(payload, ensure_ascii=True, default=str),
             ]
         )
         try:
@@ -349,5 +362,5 @@ class CoreDocumentService:
         llm_checklist = result.get("review_checklist", [])
         if not isinstance(llm_checklist, list):
             return checklist
-        normalized = [text for item in llm_checklist if (text := str(item).strip())]
+        normalized = english_items(llm_checklist)
         return normalized or checklist

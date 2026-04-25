@@ -8,21 +8,22 @@ from typing import Literal, cast
 
 from admitpilot.agents.sae.prompts import SYSTEM_PROMPT
 from admitpilot.agents.sae.rules import ProgramRule, load_program_rules
-from admitpilot.agents.sae.scoring import RuleScoreResult, RuleScorer
 from admitpilot.agents.sae.schemas import ProgramRecommendation, StrategicReport
+from admitpilot.agents.sae.scoring import RuleScorer, RuleScoreResult
 from admitpilot.agents.sae.semantic import (
     SemanticMatcher,
     SemanticMatchResult,
     build_semantic_matcher,
 )
 from admitpilot.config import AdmitPilotSettings
+from admitpilot.core.english import english_items, english_or
 from admitpilot.core.schemas import AIEAgentOutput, UserProfile
 from admitpilot.domain.catalog import DEFAULT_ADMISSIONS_CATALOG, AdmissionsCatalog
 from admitpilot.platform.llm.openai import OpenAIClient
 
 
 class StrategicAdmissionsService:
-    """负责候选项目评估与风险排序。"""
+    """Evaluate candidate programs and rank risk-aware options."""
 
     MODEL_BREAKDOWN = {"rule": 0.45, "semantic": 0.35, "risk": 0.20}
     _DEFAULT_RULES_DIR = Path(__file__).resolve().parents[4] / "data" / "program_rules"
@@ -59,7 +60,7 @@ class StrategicAdmissionsService:
         )
 
     def evaluate(self, user_profile: UserProfile, intelligence: AIEAgentOutput) -> StrategicReport:
-        """输出分层推荐、优劣势和差距分析。"""
+        """Return tiered recommendations, strengths, weaknesses, and gap actions."""
         target_schools = self._resolve_target_schools(
             intelligence=intelligence, user_profile=user_profile
         )
@@ -88,8 +89,9 @@ class StrategicAdmissionsService:
             1 for status in official_status.values() if status != "official_found"
         )
         summary = (
-            f"完成 {len(recommendations)} 个项目评估，"
-            f"官方未完全发布学校数={predicted_count}，输出风险感知排序。"
+            f"Evaluated {len(recommendations)} target programs; "
+            f"{predicted_count} schools do not yet have complete official release coverage. "
+            "Returned a risk-aware ranking."
         )
         summary, strengths, weaknesses, gap_actions, recommendations = self._llm_refine_report(
             user_profile=user_profile,
@@ -256,13 +258,18 @@ class StrategicAdmissionsService:
         evidence.append(f"tier={tier} from overall_score pipeline")
 
         if "hard_gpa_gap" in rule_result.notes:
-            gaps.append("GPA 低于该项目规则硬门槛，需要提分或补充学术证明")
+            gaps.append(
+                "GPA is below the hard rule threshold; add academic proof or improve GPA."
+            )
         if "hard_ielts_gap" in rule_result.notes or "missing_ielts" in rule_result.notes:
-            gaps.append("语言成绩未达到规则要求或未提供")
+            gaps.append("English test evidence is missing or below the rule threshold.")
         if "background_mismatch" in rule_result.notes:
-            gaps.append("经历/专业叙事与规则推荐背景关键词对齐不足")
+            gaps.append("Experience narrative is not aligned with preferred background keywords.")
         if "missing_rule_file" in rule_result.notes:
-            gaps.append(f"缺少 {school}:{target_program} 的 YAML 规则文件，规则分使用保守回退")
+            gaps.append(
+                f"Missing YAML rule file for {school}:{target_program}; "
+                "rule score uses a conservative fallback."
+            )
 
         if rule is not None:
             risk_flags.extend(rule.risk_flags)
@@ -281,7 +288,7 @@ class StrategicAdmissionsService:
         return evidence, gaps, risk_flags, missing_inputs
 
     def _risk_score(self, intelligence: AIEAgentOutput, school: str) -> float:
-        """风险打分骨架，数值越高风险越高。"""
+        """Risk score skeleton. Higher values mean higher risk."""
         status = intelligence.get("official_status_by_school", {}).get(school, "predicted")
         forecast_count = len(intelligence.get("forecast_signals", []))
         if status == "official_found":
@@ -304,41 +311,43 @@ class StrategicAdmissionsService:
         rule_notes: list[str],
         tier: str,
     ) -> list[str]:
-        notes = f"规则命中={','.join(rule_notes)}" if rule_notes else "规则命中=baseline"
+        notes = f"rule_notes={','.join(rule_notes)}" if rule_notes else "rule_notes=baseline"
         return [
-            f"{school} tier={tier}（overall=0.45*rule+0.35*semantic+0.20*(1-risk)）",
-            f"{school} 规则匹配得分={rule_score:.2f}",
+            f"{school} tier={tier} (overall=0.45*rule+0.35*semantic+0.20*(1-risk))",
+            f"{school} rule match score={rule_score:.2f}",
             notes,
-            f"语义契合得分={semantic_score:.2f}",
-            f"风险评估得分={risk_score:.2f}",
+            f"semantic fit score={semantic_score:.2f}",
+            f"risk score={risk_score:.2f}",
         ]
 
     def _summarize_strength_weakness(
         self, user_profile: UserProfile
     ) -> tuple[list[str], list[str]]:
-        strengths = ["申请方向明确"]
+        strengths = ["Application direction is clear."]
         if user_profile.experiences:
-            strengths.append("经历素材可形成证据链")
-        weaknesses = ["高竞争项目仍需更强差异化表达"]
+            strengths.append("Experience materials can form an evidence chain.")
+        weaknesses = ["High-competition programs still need sharper differentiation."]
         if not user_profile.language_scores:
-            weaknesses.append("语言成绩信息不完整")
+            weaknesses.append("English test evidence is incomplete.")
         return strengths, weaknesses
 
     def _derive_gap_actions(
         self, user_profile: UserProfile, recommendations: list[ProgramRecommendation]
     ) -> list[str]:
-        """差距分析骨架。
+        """Gap-action skeleton.
 
-        TODO: 接入按学校项目的结构化 gap taxonomy。
+        TODO: Add school/program-specific gap taxonomy.
         """
         actions = [
-            "补齐项目契合证据（课程/项目/研究目标映射）",
-            "准备 2-3 个可量化成果用于文书与面试",
+            "Add program-fit evidence that maps courses, projects, and research goals.",
+            "Prepare 2-3 quantified outcomes for documents and interviews.",
         ]
         if not user_profile.language_scores:
-            actions.append("尽快补充语言考试计划与目标分数")
+            actions.append("Add an English test plan and target score as soon as possible.")
         if any(item.tier == "reach" for item in recommendations):
-            actions.append("为冲刺项目准备替代叙事版本与推荐顺序预案")
+            actions.append(
+                "Prepare alternate narratives and priority-order backups for reach programs."
+            )
         return actions
 
     def _llm_refine_report(
@@ -355,13 +364,16 @@ class StrategicAdmissionsService:
             return summary, strengths, weaknesses, gap_actions, recommendations
         payload = {
             "profile": {
-                "major_interest": user_profile.major_interest,
+                "major_interest": english_or(user_profile.major_interest, "unspecified"),
                 "target_schools": user_profile.target_schools,
                 "target_programs": user_profile.target_programs,
                 "academic_metrics": user_profile.academic_metrics,
                 "language_scores": user_profile.language_scores,
-                "experiences": user_profile.experiences,
-                "risk_preference": user_profile.risk_preference,
+                "experiences": [
+                    english_or(item, "Applicant experience evidence")
+                    for item in user_profile.experiences
+                ],
+                "risk_preference": english_or(user_profile.risk_preference, "balanced"),
             },
             "intelligence": {
                 "target_program": intelligence.get("target_program", ""),
@@ -384,13 +396,16 @@ class StrategicAdmissionsService:
         }
         prompt = "\n".join(
             [
-                "请基于输入生成 JSON。",
                 (
-                    '返回格式：{"summary":"...","strengths":["..."],"weaknesses":["..."],'
-                    '"gap_actions":["..."],"reasons_by_school":{"NUS":["..."]}}'
+                    "Generate JSON in English only. "
+                    "Do not output markdown or any non-English narrative."
                 ),
-                "不要输出 markdown。",
-                json.dumps(payload, ensure_ascii=False, default=str),
+                (
+                    'Return format: {"summary":"...","strengths":["..."],'
+                    '"weaknesses":["..."],"gap_actions":["..."],'
+                    '"reasons_by_school":{"NUS":["..."]}}'
+                ),
+                json.dumps(payload, ensure_ascii=True, default=str),
             ]
         )
         try:
@@ -401,7 +416,7 @@ class StrategicAdmissionsService:
             )
         except RuntimeError:
             return summary, strengths, weaknesses, gap_actions, recommendations
-        refined_summary = str(result.get("summary", "")).strip() or summary
+        refined_summary = english_or(result.get("summary"), summary)
         refined_strengths = self._normalize_text_list(result.get("strengths")) or strengths
         refined_weaknesses = self._normalize_text_list(result.get("weaknesses")) or weaknesses
         refined_gap_actions = self._normalize_text_list(result.get("gap_actions")) or gap_actions
@@ -420,6 +435,4 @@ class StrategicAdmissionsService:
         )
 
     def _normalize_text_list(self, value: object) -> list[str]:
-        if not isinstance(value, list):
-            return []
-        return [text for item in value if (text := str(item).strip())]
+        return english_items(value)
