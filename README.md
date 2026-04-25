@@ -1,29 +1,176 @@
-# admitpilot
+<h1 align="center">AdmitPilot</h1>
 
-AdmitPilot 是一个面向留学申请场景的多代理编排原型。系统由 `PAO` 统一调度
-`AIE / SAE / DTA / CDS` 四类代理，当前聚焦 `NUS / NTU / HKU / CUHK / HKUST`
-五校泛计算机项目的情报、策略、时间线与文书支持。
+<div align="center">
+  <p>
+    <a href="#zh-cn">中文</a> | <a href="./README_EN.md">English</a>
+  </p>
+  <p>
+    <img alt="Python 3.11" src="https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white" />
+    <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-Backend-009688?logo=fastapi&logoColor=white" />
+    <img alt="Next.js" src="https://img.shields.io/badge/Next.js-Web%20MVP-000000?logo=nextdotjs&logoColor=white" />
+    <img alt="License Apache 2.0" src="https://img.shields.io/badge/License-Apache%202.0-D22128" />
+    <img alt="Status Demo Prototype" src="https://img.shields.io/badge/Status-Demo%20Prototype-F59E0B" />
+  </p>
+  <p>
+    <img alt="PAO Orchestration" src="https://img.shields.io/badge/PAO-Orchestration-7C3AED" />
+    <img alt="4 Agents" src="https://img.shields.io/badge/4%20Agents-AIE%20%7C%20SAE%20%7C%20DTA%20%7C%20CDS-2563EB" />
+    <img alt="5 Universities" src="https://img.shields.io/badge/5%20Universities-NUS%20%7C%20NTU%20%7C%20HKU%20%7C%20CUHK%20%7C%20HKUST-0F766E" />
+    <img alt="38 Programs" src="https://img.shields.io/badge/38%20Programs-Computing%20Focused-DC2626" />
+    <img alt="CLI API Web" src="https://img.shields.io/badge/CLI%20%2F%20API%20%2F%20Web-Available-0891B2" />
+  </p>
+</div>
+
+<a id="zh-cn"></a>
+
+## 中文
+
+AdmitPilot 是一个面向研究生留学申请规划的多代理决策支持系统。系统由 `PAO`
+统一调度 `AIE / SAE / DTA / CDS` 四类代理，当前聚焦 `NUS / NTU / HKU /
+CUHK / HKUST` 五校、共 `38` 个泛计算机相关硕士项目，覆盖招生情报、选校策略、
+申请时间线与文书支持四类核心任务。
 
 当前仓库状态是“可演示原型”，不是生产应用。核心 CLI 流程与测试可运行，
-`Phase 1-5` 的答辩演示链路已收口；Web MVP 已加入 demo 登录与 SQLite
-运行历史持久化。全量 live 官方页覆盖、异步任务与上线准备仍未进入当前范围。
+`Phase 1-5` 的答辩演示链路已收口；Web MVP 已加入演示登录、WebSocket
+阶段事件与 SQLite 运行历史持久化。全量实时官方页覆盖、异步任务与上线准备
+仍未进入当前范围。
 
-## 当前基线
+### 目录
+
+- [项目亮点](#zh-highlights)
+- [系统架构](#zh-architecture)
+- [体验入口](#zh-entry)
+- [项目配图](#zh-assets)
+- [当前基线](#zh-baseline)
+- [代码结构](#zh-structure)
+- [文档约定](#zh-docs)
+- [环境准备](#zh-setup)
+- [运行方式](#zh-usage)
+- [质量检查](#zh-quality)
+- [PyCharm 说明](#zh-pycharm)
+
+<a id="zh-highlights"></a>
+
+### 项目亮点
+
+- `多代理编排`：由 `PAO` 统一编排 `AIE / SAE / DTA / CDS` 四类代理
+- `招生情报`：聚合院校项目要求、deadline、官网页面与案例库基线
+- `选校支持`：基于规则与语义匹配进行选校分析、风险判断与解释生成
+- `时间线规划`：支持 deadline 逆排、任务依赖、延期重排与冲突检测
+- `文书支持`：输出结构化证据、fact slots、文书提纲与一致性检查结果
+- `多入口体验`：支持 `CLI`、`FastAPI`、`Next.js Web MVP` 三种体验入口
+
+<a id="zh-architecture"></a>
+
+### 系统架构
+
+```mermaid
+flowchart TD
+    U[User Request]
+    P[PAO Orchestrator]
+
+    U --> P
+
+    P --> A[AIE<br/>Admissions Intelligence Engine]
+    P --> S[SAE<br/>Strategy Analysis Engine]
+    P --> D[DTA<br/>Deadline and Timeline Agent]
+    P --> C[CDS<br/>Content and Document Support]
+
+    A --> A1[Official Library]
+    A --> A2[Case Library]
+    A --> A3[Live Refresh and Snapshots]
+
+    S --> S1[Rule Scoring]
+    S --> S2[Semantic Matching]
+    S --> S3[Evidence-Based Recommendation]
+
+    D --> D1[Dependency Graph]
+    D --> D2[Reverse Scheduling]
+    D --> D3[Replanning]
+
+    C --> C1[Fact Slots]
+    C --> C2[Writing Support]
+    C --> C3[Consistency Checks]
+```
+
+当前默认支持范围：
+
+- 学校：`NUS / NTU / HKU / CUHK / HKUST`
+- 项目：`38` 个泛计算机相关硕士项目
+- 数据基线：`official_library + case_library + program_rules`
+- 接口形态：`CLI + API + Web MVP`
+
+<a id="zh-entry"></a>
+
+### 体验入口
+
+```bash
+# 命令行演示
+$env:PYTHONPATH='src'
+python -m admitpilot.main
+
+# 后端 API
+python run_backend.py
+
+# 前端 Web MVP
+cd frontend
+npm run dev
+```
+
+Web 演示登录信息：
+
+- 账号：`demo@admitpilot.local`
+- 密码：`admitpilot-demo`
+
+<a id="zh-assets"></a>
+
+### 项目配图
+
+当前 README 配套素材已落地到 `docs/assets/readme/`，可直接用于仓库首页展示、课程汇报与项目说明。
+
+核心示意图：
+
+![AdmitPilot Hero Banner](docs/assets/readme/hero-banner.png)
+
+![AdmitPilot Architecture Overview](docs/assets/readme/architecture-overview.png)
+
+![AdmitPilot Workflow](docs/assets/readme/workflow.png)
+
+Web 界面截图：
+
+演示登录页，展示 demo 账号登录入口与运行记录持久化能力。
+
+![AdmitPilot Web Login](docs/assets/readme/web-login.png)
+
+工作台主界面，包含申请信息表单、代理阶段面板与结果区。
+
+![AdmitPilot Web Dashboard](docs/assets/readme/web-dashboard.png)
+
+阶段执行视图，展示 WebSocket 实时阶段事件与代理状态变化。
+
+![AdmitPilot Web Stage Events](docs/assets/readme/web-stage-events.png)
+
+运行历史视图，展示 SQLite 持久化后的执行记录与恢复能力。
+
+![AdmitPilot Web Run History](docs/assets/readme/web-run-history.png)
+
+<a id="zh-baseline"></a>
+
+### 当前基线
 
 - 默认 LLM 提供方：OpenAI
 - 默认模型：`gpt-5.4-nano`
 - AIE 运行时默认读取：`data/official_library/official_library.json`
 - AIE 案例库默认读取：`data/case_library/case_library.json`
 - AIE 测试模式官方库写入隔离到：`.pytest-local/runtime_official_library.test.json`
-- SAE 非 test 模式默认语义匹配：`embedding`；test 模式默认：`fake`
+- SAE 非测试模式默认语义匹配：`embedding`；测试模式默认：`fake`
 - 官方库刷新入口：`python -m admitpilot.debug.refresh_official_library --cycle 2026`
-- 默认 demo 项目组合（CLI `python -m admitpilot.main`）：
+- 默认演示项目组合（CLI `python -m admitpilot.main`）：
   - `NUS -> MCOMP_CS`
   - `NTU -> MSAI`
   - `HKU -> MSCS`
   - `CUHK -> MSCS`
   - `HKUST -> MSIT`
-- 默认 demo 项目组合（Web `/api/v1/demo-profile`）：
+- 默认演示项目组合（Web `/api/v1/demo-profile`）：
   - `NUS -> MTECH_AIS`
   - `NTU -> MSAI`
   - `HKU -> MSCS`
@@ -34,11 +181,13 @@ AdmitPilot 是一个面向留学申请场景的多代理编排原型。系统由
   - `python -m ruff check src tests`：通过
   - `python -m mypy src tests`：通过
 - 推荐运行环境：`admitpilot` conda 环境
-- Demo 登录账号：`demo@admitpilot.local`
-- Demo 登录密码：`admitpilot-demo`
-- Demo SQLite 数据库默认路径：`.admitpilot/admitpilot.sqlite3`
+- 演示登录账号：`demo@admitpilot.local`
+- 演示登录密码：`admitpilot-demo`
+- 演示用 SQLite 数据库默认路径：`.admitpilot/admitpilot.sqlite3`
 
-## 代码结构
+<a id="zh-structure"></a>
+
+### 代码结构
 
 - `src/admitpilot/core`：跨模块共享契约、上下文与 TypedDict 输出模型
 - `src/admitpilot/pao`：编排层，请求契约、路由、执行图与结果聚合
@@ -49,7 +198,9 @@ AdmitPilot 是一个面向留学申请场景的多代理编排原型。系统由
 - `tests`：回归测试
 - `docs`：方案、实施计划与进度记录
 
-## 文档约定
+<a id="zh-docs"></a>
+
+### 文档约定
 
 当前 `docs` 目录中的文档都应与代码基线保持一致。建议按以下角色理解：
 
@@ -62,9 +213,11 @@ AdmitPilot 是一个面向留学申请场景的多代理编排原型。系统由
 - `docs/agent_engineering_architecture.md`
   - 当前代码基线的高层架构说明
 - `docs/project_full_documentation.md`
-  - 当前支持范围、live 支持矩阵与仓库状态快照
+  - 当前支持范围、实时支持矩阵与仓库状态快照
 
-## 环境准备
+<a id="zh-setup"></a>
+
+### 环境准备
 
 ```bash
 conda activate admitpilot
@@ -83,16 +236,18 @@ ADMITPILOT_SEMANTIC_MATCHER_KIND=
 ADMITPILOT_CASE_LIBRARY_PATH=data/case_library/case_library.json
 ```
 
-## 运行方式
+<a id="zh-usage"></a>
 
-CLI demo：
+### 运行方式
+
+命令行演示：
 
 ```bash
 $env:PYTHONPATH='src'
 python -m admitpilot.main
 ```
 
-API：
+后端 API：
 
 ```bash
 python run_backend.py
@@ -111,11 +266,13 @@ Web 演示流程：
 2. 使用 `demo@admitpilot.local` / `admitpilot-demo` 登录。
 3. 点击 `Load Demo Profile`。
 4. 点击 `Run AdmitPilot`。
-5. 前端通过 WebSocket `/api/v1/orchestrations/ws` 接收后端真实阶段事件；等待 AIE / SAE / DTA / CDS 依次进入 running / completed。
+5. 前端通过 WebSocket `/api/v1/orchestrations/ws` 接收后端真实阶段事件；等待 `AIE / SAE / DTA / CDS` 依次进入 `running / completed`。
 6. 在左侧 `Run History` 中点击任意历史记录，恢复该次 request 与 response。
 7. 点击历史记录右侧删除按钮，可删除单条运行历史。
 
-## 质量检查
+<a id="zh-quality"></a>
+
+### 质量检查
 
 当前已验证通过：
 
@@ -125,21 +282,13 @@ python -m pytest -q
 ```
 
 说明：
+
 - `2026-04-25` 已验证 `pytest` / `ruff` / `mypy` 全量通过。
+- 如需继续了解实现边界与后续推进路径，建议结合 `docs/progress.md` 与 `docs/implementation_plan.md` 阅读。
 
-## 当前限制
+<a id="zh-pycharm"></a>
 
-- `AIE` 运行时默认读取官方库，`fixture` 仅保留给测试使用。
-- `AIE` 运行时默认读取 JSON 案例库，不再使用空 case gateway。
-- `AIE` 已支持 live 官方页刷新，但还没有覆盖全部目录项目；当前支持矩阵见 `docs/project_full_documentation.md`。
-- `SAE` 已完成规则打分与可替换语义匹配；无 API key 时 embedding matcher 会使用本地 fallback。
-- `DTA` 已完成拓扑排序、deadline 逆排与自动重排的演示范围实现。
-- `CDS` 已完成结构化证据、fact slots、模板层与一致性检查的演示范围实现。
-- Web MVP 已落地 demo 登录、Bearer session 与 SQLite 运行历史。
-- Web 工作台运行链路已改为 WebSocket 阶段事件，最终完成后仍持久化完整 run response。
-- 平台层默认仍是内存适配器，未落地 PostgreSQL / Redis / Object Storage。
-
-## PyCharm 说明
+### PyCharm 说明
 
 - Working Directory 指向项目根目录
 - 将 `src` 标记为 Sources Root，或设置 `PYTHONPATH=src`
