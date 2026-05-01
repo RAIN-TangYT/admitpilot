@@ -132,10 +132,10 @@ Web 界面截图：
 
 - 默认 LLM 提供方：OpenAI
 - 默认模型：`gpt-5.4-nano`
-- AIE 运行时默认读取：`data/official_library/official_library.json`
+- AIE 默认采用：`live-first` 官网抓取；字段缺失或校正失败时按字段回退到 `data/official_library/official_library.json`
 - AIE 案例库默认读取：`data/case_library/case_library.json`
-- AIE 测试模式官方库写入隔离到：`.pytest-local/runtime_official_library.test.json`
-- SAE 非测试模式默认语义匹配：`embedding`；测试模式默认：`fake`
+- AIE 会基于最终可信官网字段同步对应 `program_rules` 的 `hard_thresholds`
+- SAE 默认语义匹配：`embedding`；测试与单测场景可使用：`fake`
 - 官方库刷新入口：`python -m admitpilot.debug.refresh_official_library --cycle 2026`
 - 默认演示项目组合（CLI `python -m admitpilot.main`）：
   - `NUS -> MCOMP_CS`
@@ -149,10 +149,9 @@ Web 界面截图：
   - `HKU -> MSCS`
   - `CUHK -> MSCS`
   - `HKUST -> MSAI`
-- 最近验证命令（`2026-04-25`）：
-  - `python -m pytest -q`：通过
-  - `python -m ruff check src tests`：通过
-  - `python -m mypy src tests`：通过
+- 最近验证命令（`2026-05-02`）：
+  - `$env:PYTHONPATH='src'; pytest tests/test_aie_service.py tests/test_settings.py`：通过
+  - `$env:PYTHONPATH='src'; pytest tests/test_aie_agent.py`：通过
 - 推荐运行环境：`admitpilot` conda 环境
 - 演示登录账号：`demo@admitpilot.local`
 - 演示登录密码：`admitpilot-demo`
@@ -164,7 +163,7 @@ Web 界面截图：
 
 - `src/admitpilot/core`：跨模块共享契约、上下文与 TypedDict 输出模型
 - `src/admitpilot/pao`：编排层，请求契约、路由、执行图与结果聚合
-- `src/admitpilot/agents`：AIE / SAE / DTA / CDS 业务代理
+- `src/admitpilot/agents`：AIE / SAE / DTA / CDS 业务代理；AIE 运行时包含 live-first 抓取、字段校正、官方库字段级回退与 `hard_thresholds` 同步
 - `src/admitpilot/platform`：公共平台层，包括 memory、runtime、security、governance、observability
 - `src/admitpilot/api`：FastAPI 入口与健康检查路由
 - `src/admitpilot/config`：统一配置加载

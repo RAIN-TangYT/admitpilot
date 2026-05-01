@@ -1,6 +1,6 @@
 # AdmitPilot 实施进度记录
 
-- 文档日期：`2026-04-25`
+- 文档日期：`2026-05-02`
 - 对应计划：`docs/implementation_plan.md`
 - 用途：记录每一步的实际修复动作、测试结果、阻塞项与下一步安排
 
@@ -10,7 +10,7 @@
 - 当前终点：`Phase 5 / Step 21`
 - 当前主线：`Phase 3-5` 已完成演示范围收口
 - 暂缓范围：`Phase 6-7` 的生产化、异步执行与上线准备
-- 运行时基线：AIE 默认读取 `data/official_library/official_library.json` 与 `data/case_library/case_library.json`；测试模式使用 `.pytest-local/runtime_official_library.test.json` 作为官方库影子副本；SAE 在非 test 模式默认使用 embedding matcher，test 模式保留 deterministic fake matcher；`fixture` 仅用于测试，官方库通过 `refresh_official_library.py` 刷新
+- 运行时基线：AIE 默认采用 `live-first` 官网抓取，并对 `application_deadline`、`language_requirements`、`required_materials`、`academic_requirement` 等字段做校正；校正失败或缺字段时按字段回退到 `data/official_library/official_library.json`；AIE 还会把最终可信字段同步到对应 `program_rules` 的 `hard_thresholds`；SAE 默认使用 embedding matcher，测试与单测场景可注入 deterministic fake matcher；`fixture` 仅用于测试，官方库可通过 `refresh_official_library.py` 刷新
 
 ## 使用规则
 
@@ -64,6 +64,24 @@
 | Phase 5 | Step 18-21 | `done` | CDS 已完成用户证据模型、fact slots、模板层与一致性检查 |
 | Phase 6 | Step 22-26 | `skipped` | 当前课堂/答辩演示范围内暂缓，不作为本轮目标 |
 | Phase 7 | Step 27-30 | `skipped` | 当前课堂/答辩演示范围内暂缓，不作为本轮目标 |
+
+### 最新增补（`2026-05-02`）
+
+- 改动文件：
+  - `src/admitpilot/agents/aie/realtime.py`
+  - `src/admitpilot/agents/aie/runtime.py`
+  - `src/admitpilot/config.py`
+  - `tests/test_aie_service.py`
+  - `tests/test_settings.py`
+- 实际修复动作：
+  - 为 AIE 新增 `live-first` 官网抓取链路，并将字段校正与字段级回退整合到运行时网关。
+  - 新增规则目录路径配置，支持 `program_rules` 的运行时装配与同步。
+  - 允许 AIE 基于最终可信官网字段同步对应项目 `program_rules` 中的 `hard_thresholds`，但不直接修改仓库内真实数据文件。
+- 测试：
+  - 命令：`$env:PYTHONPATH='src'; pytest tests/test_aie_service.py tests/test_settings.py`
+  - 结果：`passed`
+  - 命令：`$env:PYTHONPATH='src'; pytest tests/test_aie_agent.py`
+  - 结果：`passed`
 
 ---
 
@@ -497,7 +515,7 @@
   - `tests/test_sae_service.py`
   - `tests/test_settings.py`
 - 实际修复动作：
-  - 定义 `SemanticMatcher` 接口，保留 deterministic `FakeSemanticMatcher` 供 test 模式和单测注入。
+  - 定义 `SemanticMatcher` 接口，保留 deterministic `FakeSemanticMatcher` 供测试与单测注入。
   - 实现 `EmbeddingSemanticMatcher`，可调用 OpenAI embeddings；无 API key 或离线时使用本地 hashing embedding fallback。
   - 新增 `ADMITPILOT_SEMANTIC_MATCHER_KIND` 与 `OPENAI_EMBEDDING_MODEL` 配置，`demo/staging/prod` 默认 `embedding`，`test` 默认 `fake`。
   - 把旧 `fake_token_overlap` 输出标识改为 `deterministic_token_overlap`，避免治理策略误判为 policy blocked。
@@ -740,8 +758,8 @@
 - 实际修复动作：
   - AIE runtime 从 `NullCaseSourceGateway` 切到 `JsonCaseLibrarySourceGateway`，默认读取 `data/case_library/case_library.json`。
   - AIE runtime 的官方库 repository 切到 `JsonOfficialSnapshotRepository`，同一个 repository 同时服务 official gateway 和 snapshot cache。
-  - test 模式下官方库写入隔离到 `.pytest-local/runtime_official_library.test.json`，构建 runtime 时先从正式官方库复制影子副本，避免测试污染 tracked 数据文件。
-  - SAE runtime 默认 matcher 改为 settings 驱动：非 test 模式默认 `embedding`，test 模式默认 `fake`。
+  - 官方库路径与 runtime 装配逻辑解耦，避免把测试运行结果写入文档基线。
+  - SAE runtime 默认 matcher 改为 settings 驱动：默认使用 `embedding`，测试场景可使用 `fake`。
   - `EmbeddingSemanticMatcher` 接入 OpenAI embeddings，并提供本地 hashing fallback，保证无 API key 时仍可离线运行。
   - AIE/DTA/CDS/SAE service 在未显式传入 LLM client 时默认构造 test-mode client，避免单测受宿主机环境变量影响而误触发网络请求。
 - 测试：

@@ -1,6 +1,6 @@
 # AdmitPilot Current Implementation Snapshot
 
-- 文档日期：`2026-04-25`
+- 文档日期：`2026-05-02`
 - 适用范围：当前仓库代码基线
 - 文档目的：给 GitHub 读者一个与代码一致的实现快照
 
@@ -23,10 +23,10 @@
 - `AIE -> SAE -> DTA -> CDS` 默认链路可用
 - OpenAI 默认模型接入完成，默认模型是 `gpt-5.4-nano`
 - 配置层、应用工厂、API 健康检查骨架已接入
-- AIE 运行时默认读取 `data/official_library/official_library.json`
+- AIE 运行时默认采用 `live-first` 官网抓取，并在字段校正失败或字段缺失时按字段回退到 `data/official_library/official_library.json`
 - AIE 运行时默认读取 `data/case_library/case_library.json`
 - AIE 已完成学校/项目目录、官网抓取、页面解析、快照 diff 主链路
-- `refresh_official_library.py` 已可真实执行 live 官方页刷新，且只更新官方库，不更新案例库
+- `refresh_official_library.py` 已可真实执行 live 官方页刷新；运行时 AIE 还可基于最终可信官网字段同步对应 `program_rules` 的 `hard_thresholds`
 - SAE 已完成规则文件、规则打分、可替换语义匹配与证据化解释
 - DTA 已完成拓扑排序、deadline 逆排、延误重排与冲突检测
 - CDS 已完成用户证据模型、fact slots、模板层与一致性检查
@@ -105,7 +105,7 @@ ADMITPILOT_CASE_LIBRARY_PATH=data/case_library/case_library.json
 
 说明：
 - 当前仓库已不再使用 `Qwen / DashScope`
-- SAE 非 test 模式默认使用 embedding matcher；test 模式默认使用 deterministic fake matcher
+- SAE 默认使用 embedding matcher；测试与单测场景可使用 deterministic fake matcher
 - 无 OpenAI API key 时，embedding matcher 使用本地 hashing fallback，保证离线演示可运行
 - 若后续更换模型，应统一修改 settings、LLM client、README 与测试
 
@@ -280,8 +280,8 @@ python -m mypy src tests
 
 ## 9. 当前已知限制
 
+- AIE 运行时采用 live-first 官方页抓取，但仍受站点结构、反爬页与网络可达性影响
 - AIE 运行时默认读取官方库与 JSON 案例库；`fixture` 仅保留给测试使用
-- test 模式会把官方库复制到 `.pytest-local/runtime_official_library.test.json` 作为影子副本，避免测试写脏 tracked 数据文件
 - AIE live 已覆盖全部目录项目的 URL 配置，但仍不能对全部项目稳定抓到并结构化解析官方页
 - SAE 已完成规则化评分和可替换语义匹配，但不是生产级推荐系统
 - DTA 已完成演示范围的调度与重排，但不是生产级日历/任务系统
@@ -292,7 +292,7 @@ python -m mypy src tests
 
 如果现在提交到 GitHub，推荐描述为：
 
-> 一个面向留学申请场景的多代理原型系统，已完成核心编排链路、统一配置、基础 API 骨架、基于官方库和案例库的 AIE 情报链路，以及 SAE/DTA/CDS 的答辩演示范围能力；live 官方页刷新已接入，但真实外部数据源覆盖、生产化存储、异步执行与上线准备仍在实施范围之外。
+> 一个面向留学申请场景的多代理原型系统，已完成核心编排链路、统一配置、基础 API 骨架、基于官方库和案例库的 AIE 情报链路；当前 AIE 支持 live-first 官网抓取、字段级回退和 `hard_thresholds` 同步，SAE/DTA/CDS 已覆盖答辩演示范围能力，但真实外部数据源覆盖、生产化存储、异步执行与上线准备仍在实施范围之外。
 
 不建议描述为：
 - “已完成真实产品”

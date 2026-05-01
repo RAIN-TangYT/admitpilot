@@ -10,7 +10,7 @@ from pathlib import Path
 _RUN_MODES = {"demo", "test", "staging", "prod"}
 _DEFAULT_OFFICIAL_LIBRARY_PATH = "data/official_library/official_library.json"
 _DEFAULT_CASE_LIBRARY_PATH = "data/case_library/case_library.json"
-_TEST_RUNTIME_OFFICIAL_LIBRARY_PATH = ".pytest-local/runtime_official_library.test.json"
+_DEFAULT_PROGRAM_RULES_PATH = "data/program_rules"
 
 
 def _read_env_file(env_file: Path) -> dict[str, str]:
@@ -54,6 +54,7 @@ class AdmitPilotSettings:
     object_store_secret_key: str = ""
     official_library_path: str = _DEFAULT_OFFICIAL_LIBRARY_PATH
     case_library_path: str = _DEFAULT_CASE_LIBRARY_PATH
+    program_rules_path: str = _DEFAULT_PROGRAM_RULES_PATH
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     api_data_path: str = ".admitpilot/admitpilot.sqlite3"
@@ -89,12 +90,6 @@ class AdmitPilotSettings:
     @property
     def is_demo_mode(self) -> bool:
         return self.run_mode == "demo"
-
-    @property
-    def runtime_official_library_path(self) -> str:
-        if self.is_test_mode and self.official_library_path == _DEFAULT_OFFICIAL_LIBRARY_PATH:
-            return _TEST_RUNTIME_OFFICIAL_LIBRARY_PATH
-        return self.official_library_path
 
 
 def load_settings(
@@ -139,6 +134,12 @@ def load_settings(
             values.get(
                 "ADMITPILOT_CASE_LIBRARY_PATH",
                 _DEFAULT_CASE_LIBRARY_PATH,
+            )
+        ),
+        program_rules_path=str(
+            values.get(
+                "ADMITPILOT_PROGRAM_RULES_PATH",
+                _DEFAULT_PROGRAM_RULES_PATH,
             )
         ),
         api_host=str(values.get("ADMITPILOT_API_HOST", "127.0.0.1")),

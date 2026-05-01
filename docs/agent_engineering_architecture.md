@@ -1,6 +1,6 @@
 # AdmitPilot Agent Engineering Architecture
 
-- 文档日期：`2026-04-25`
+- 文档日期：`2026-05-02`
 - 文档定位：当前代码基线的高层架构说明
 - 规范优先级：
   - 产品目标与课程背景：`docs/Project_Proposal_Group 26 (TANG Yutong, CHEN Jinghao, ZHANG Yufei, SHI Junren).docx`
@@ -19,9 +19,10 @@ AdmitPilot 当前是一个“可演示的多代理申请支持原型”，不是
 - 配置层、应用工厂、FastAPI 健康检查骨架
 - 基础平台层骨架：memory / runtime / governance / security / observability
 - OpenAI 默认模型接入：`gpt-5.4-nano`
-- AIE 运行时默认读取官方库：`data/official_library/official_library.json`
+- AIE 运行时默认采用 live-first 官网抓取，并在字段校正失败或字段缺失时回退到 `data/official_library/official_library.json`
 - AIE 运行时默认读取案例库：`data/case_library/case_library.json`
 - AIE live 官方刷新入口：`refresh_official_library.py`
+- AIE 可基于最终可信官网字段同步对应 `program_rules` 的 `hard_thresholds`
 - demo 默认按“学校 -> 项目”组合运行，而不是统一单项目
 - SAE 规则打分、可替换语义匹配与证据化解释
 - DTA 拓扑调度、deadline 逆排、延误重排与冲突检测
@@ -57,7 +58,7 @@ AdmitPilot 当前是一个“可演示的多代理申请支持原型”，不是
 路径：`src/admitpilot/agents`
 
 职责：
-- `AIE`：招生情报、官方库刷新与快照
+- `AIE`：招生情报、live-first 官网抓取、字段校正、官方库字段级回退、`hard_thresholds` 同步与快照
 - `SAE`：规则化选校评估、语义匹配与风险排序
 - `DTA`：时间线、deadline 逆排与里程碑计划
 - `CDS`：证据化文书支持、模板提纲与一致性检查
@@ -129,8 +130,7 @@ AdmitPilot 当前是一个“可演示的多代理申请支持原型”，不是
 
 - AIE official：`data/official_library/official_library.json`
 - AIE case：`data/case_library/case_library.json`
-- AIE test official shadow：`.pytest-local/runtime_official_library.test.json`
-- SAE matcher：非 test 模式默认 `embedding`，test 模式默认 `fake`
+- SAE matcher：默认使用 `embedding`，测试与单测场景可使用 `fake`
 
 ## 4. 模块边界
 
@@ -138,7 +138,7 @@ AdmitPilot 当前是一个“可演示的多代理申请支持原型”，不是
 
 - AIE 边界：
   - `src/admitpilot/agents/aie/*`
-  - 负责学校/项目目录、live 抓取、解析、官方库、快照、diff
+  - 负责学校/项目目录、live 抓取、字段校正、官方库字段级回退、`hard_thresholds` 同步、快照、diff
 
 - SAE 边界：
   - `src/admitpilot/agents/sae/*`

@@ -10,8 +10,8 @@
 1. 当前执行终点仍为 `Phase 5 / Step 21`，`AIE -> SAE -> DTA -> CDS` 稳定演示链路已完成。
 2. `Phase 1-5` 已完成课堂/答辩演示范围收口。
 3. `Phase 6-7` 保留在本文件中，作为未来真实应用化的预留步骤；本轮答辩范围内默认不执行。
-4. 运行时基线以当前仓库状态为准：AIE 默认读取 `data/official_library/official_library.json` 和 `data/case_library/case_library.json`；测试模式使用 `.pytest-local/runtime_official_library.test.json` 作为官方库影子副本；`fixture` 仅保留测试使用；`refresh_official_library.py` 是官方库刷新入口。
-5. SAE 在非 test 模式默认使用 embedding matcher，test 模式保留 deterministic fake matcher；无 API key 时 embedding matcher 使用本地 hashing fallback，保证离线演示可运行。
+4. 运行时基线以当前仓库状态为准：AIE 默认采用 `live-first` 官网抓取，并在字段校正失败或字段缺失时回退到 `data/official_library/official_library.json`；AIE 默认读取 `data/case_library/case_library.json`；`fixture` 仅保留测试使用；`refresh_official_library.py` 是官方库刷新入口。
+5. SAE 默认使用 embedding matcher；测试与单测场景保留 deterministic fake matcher；无 API key 时 embedding matcher 使用本地 hashing fallback，保证离线演示可运行。
 6. 如果后续目标仍仅限课堂演示，不扩展部署、数据库、异步 worker 等生产化内容；如果目标转向真实应用化，从 `Phase 6 / Step 22` 开始。
 
 ## 0. 执行约束
@@ -116,7 +116,7 @@ python -m pytest tests/test_time_utils.py tests/test_aie_service.py tests/test_o
   - `PrincipalApplicationOrchestrator` 应接受外部注入的 bundle 和 agent 集合。
   - `main.py` 改为调用应用工厂，不再直接 new 默认对象。
 - 验证测试：
-  - 新增 `tests/test_app_factory.py`，验证 demo 模式和 test 模式能装配不同依赖。
+  - 新增 `tests/test_app_factory.py`，验证不同运行场景能装配预期依赖。
   - 运行：
 
 ```powershell
