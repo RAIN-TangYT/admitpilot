@@ -5,6 +5,7 @@ from admitpilot.agents.aie.gateways import (
     JsonCaseLibrarySourceGateway,
     OfficialLibrarySourceGateway,
 )
+from admitpilot.agents.aie.realtime import RealtimeOfficialSourceGateway
 from admitpilot.agents.aie.repositories import JsonOfficialSnapshotRepository
 from admitpilot.agents.sae.agent import SAEAgent
 from admitpilot.agents.sae.semantic import EmbeddingSemanticMatcher, FakeSemanticMatcher
@@ -28,10 +29,10 @@ def test_build_application_uses_supplied_demo_settings() -> None:
     assert application.orchestrator.platform_bundle is application.platform_bundle
     assert application.orchestrator.agents is application.agents
     assert aie_agent.service.llm_client.enabled is True
-    assert isinstance(aie_agent.service.official_gateway, OfficialLibrarySourceGateway)
+    assert isinstance(aie_agent.service.official_gateway, RealtimeOfficialSourceGateway)
     assert isinstance(aie_agent.service.official_repository, JsonOfficialSnapshotRepository)
     assert isinstance(aie_agent.service.case_gateway, JsonCaseLibrarySourceGateway)
-    library_gateway = aie_agent.service.official_gateway
+    library_gateway = aie_agent.service.official_gateway.library_gateway
     assert isinstance(library_gateway.repository, JsonOfficialSnapshotRepository)
     repository = library_gateway.repository
     assert str(repository.path).endswith("official_library.json")
@@ -51,5 +52,5 @@ def test_build_application_keeps_test_mode_llm_disabled_without_api_key() -> Non
     assert aie_agent.service.llm_client.enabled is False
     assert isinstance(aie_agent.service.official_repository, JsonOfficialSnapshotRepository)
     repository = aie_agent.service.official_repository
-    assert str(repository.path).endswith("runtime_official_library.test.json")
+    assert str(repository.path).endswith("official_library.json")
     assert isinstance(sae_agent.service.semantic_matcher, FakeSemanticMatcher)

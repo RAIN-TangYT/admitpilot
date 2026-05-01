@@ -137,10 +137,10 @@ Run history view, showing SQLite-backed execution records and restore capability
 
 - Default LLM provider: OpenAI
 - Default model: `gpt-5.4-nano`
-- Default AIE official library: `data/official_library/official_library.json`
+- Default AIE runtime: `live-first` official-page retrieval; fields fall back to `data/official_library/official_library.json` when validation fails or data is missing
 - Default AIE case library: `data/case_library/case_library.json`
-- Test-mode AIE official-library shadow: `.pytest-local/runtime_official_library.test.json`
-- Default SAE semantic matcher in non-test mode: `embedding`; in test mode: `fake`
+- AIE syncs trusted official hard requirements into the matching `program_rules` `hard_thresholds`
+- Default SAE semantic matcher: `embedding`; testing and unit-test flows can use `fake`
 - Official-library refresh entry point: `python -m admitpilot.debug.refresh_official_library --cycle 2026`
 - Default demo portfolio for CLI `python -m admitpilot.main`:
   - `NUS -> MCOMP_CS`
@@ -154,10 +154,9 @@ Run history view, showing SQLite-backed execution records and restore capability
   - `HKU -> MSCS`
   - `CUHK -> MSCS`
   - `HKUST -> MSAI`
-- Recently verified commands on `2026-04-25`:
-  - `python -m pytest -q`: passed
-  - `python -m ruff check src tests`: passed
-  - `python -m mypy src tests`: passed
+- Recently verified commands on `2026-05-02`:
+  - `$env:PYTHONPATH='src'; pytest tests/test_aie_service.py tests/test_settings.py`: passed
+  - `$env:PYTHONPATH='src'; pytest tests/test_aie_agent.py`: passed
 - Recommended runtime environment: `admitpilot` conda environment
 - Demo account: `demo@admitpilot.local`
 - Demo password: `admitpilot-demo`
@@ -169,7 +168,7 @@ Run history view, showing SQLite-backed execution records and restore capability
 
 - `src/admitpilot/core`: shared contracts, context, and TypedDict output models
 - `src/admitpilot/pao`: orchestration layer, request contracts, routing, execution graph, and aggregation
-- `src/admitpilot/agents`: business agents for `AIE / SAE / DTA / CDS`
+- `src/admitpilot/agents`: business agents for `AIE / SAE / DTA / CDS`; AIE runtime now includes live-first retrieval, field sanitation, field-level fallback, and `hard_thresholds` synchronization
 - `src/admitpilot/platform`: platform layer for memory, runtime, security, governance, and observability
 - `src/admitpilot/api`: FastAPI entry point and health-check routes
 - `src/admitpilot/config`: centralized configuration loading
